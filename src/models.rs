@@ -46,6 +46,14 @@ impl Colour {
 #[derive(Debug, Default)]
 pub struct MediaInfo {
     pub ffprobe: Ffprobe,
+    pub sample_width: Option<u32>,
+    pub sample_height: Option<u32>,
+    pub display_width: Option<u32>,
+    pub display_height: Option<u32>,
+    pub duration: String,
+    pub filename: String,
+    pub size_bytes: i32,
+    pub size: String,
 }
 
 impl MediaInfo {
@@ -107,53 +115,53 @@ impl MediaInfo {
         })
     }
 
-    pub fn compute_display_resolution(&self) -> Stream {
+    pub fn compute_display_resolution(&mut self) -> Stream {
         let video_stream = self.find_video_stream().unwrap().clone();
         if let Stream::VideoStream(mut video_stream) = video_stream {
-            let display_width;
-            let display_height;
-
-            let mut sample_width = video_stream.width;
-            let mut sample_height = video_stream.height;
+            self.sample_width = video_stream.width;
+            self.sample_height = video_stream.height;
             if let Some(rotation) = video_stream.tags.rotate {
                 info!("Rotation is: {}", rotation);
                 // Swap width and height
                 if rotation == 90 {
-                    std::mem::swap(&mut sample_width, &mut sample_height)
+                    std::mem::swap(&mut self.sample_width, &mut self.sample_height)
                 }
             }
             if video_stream.sample_aspect_ratio == "1:1" {
-                display_width = Some(sample_width);
-                display_height = Some(sample_height);
+                self.display_width = self.sample_width;
+                self.display_height = self.sample_height;
             } else {
                 let mut sample_split = video_stream.sample_aspect_ratio.split(":").into_iter();
                 let sw = sample_split
                     .next()
                     .unwrap()
                     .to_string()
-                    .parse::<i32>()
+                    .parse::<u32>()
                     .unwrap();
                 let sh = sample_split
                     .next()
                     .unwrap()
                     .to_string()
-                    .parse::<i32>()
+                    .parse::<u32>()
                     .unwrap();
 
-                display_width = Some(sample_width * sw / sh);
-                display_height = Some(sample_height);
-            }
-            video_stream.display_width = display_width;
-            video_stream.display_height = display_height;
+                info!("sw: {}", sw);
+                info!("sh: {}", sh);
+                info!("sample_width: {:?}", self.sample_width);
 
-            if let Some(option_display_width) = display_width {
+                let new_sample_width = self.sample_width.unwrap() * sw / sh;
+                self.display_width = Some(new_sample_width);
+                self.display_height = self.sample_height;
+            }
+
+            if let Some(option_display_width) = self.display_width {
                 if option_display_width == 0 {
-                    video_stream.display_width = Some(sample_width);
+                    video_stream.display_width = self.sample_width;
                 }
             }
-            if let Some(option_display_height) = display_height {
+            if let Some(option_display_height) = self.display_height {
                 if option_display_height == 0 {
-                    video_stream.display_height = Some(sample_height);
+                    video_stream.display_height = self.sample_height;
                 }
             }
             Stream::VideoStream(video_stream)
@@ -163,16 +171,19 @@ impl MediaInfo {
     }
 
     // Compute duration, size and retrieve filename
-    pub fn compute_format(&self) {
+    pub fn compute_format(&mut self) {
         let video_stream = self.find_video_stream().unwrap();
         if let Stream::VideoStream(video_stream) = video_stream {
-            info!("duration {:?} or {:?}", video_stream.duration, self.ffprobe.format.duration);
             let duration = match &video_stream.duration {
                 Some(duration) => duration,
                 None => &self.ffprobe.format.duration,
             };
-            let pretty = self.pretty_duration(duration.parse::<f32>().unwrap(), true, true);
-            info!("pretty duration: {}", pretty);
+            info!("duration before is {}", duration);
+            self.duration = self.pretty_duration(duration.parse::<f32>().unwrap(), true, true);
+            self.filename = self.ffprobe.format.duration.to_string();
+            self.size_bytes = self.ffprobe.format.size.parse().unwrap();
+            self.size =
+                MediaInfo::human_readable_size(self.ffprobe.format.size.parse::<f64>().unwrap());
         }
     }
 
@@ -182,7 +193,7 @@ impl MediaInfo {
         let remaining_seconds = seconds - 3600.0 * hours;
 
         let minutes = (remaining_seconds / 60.0).floor();
-        let remaining_seconds = seconds - 60.0 * hours;
+        let remaining_seconds = remaining_seconds - 60.0 * minutes;
         let mut duration = "".to_string();
 
         if hours > 0.0 {
@@ -210,6 +221,74 @@ impl MediaInfo {
 
         duration
     }
+
+    pub fn pretty_to_seconds(pretty_duration: String) -> f32 {
+        // TODO: Handle this result
+        let millis_split: Vec<&str> = pretty_duration.split(".").collect();
+        let mut millis = 0.0;
+        let left;
+        if millis_split.len() == 2 {
+            millis = millis_split[1].parse().unwrap();
+            left = millis_split[0].to_string();
+        } else {
+            left = pretty_duration;
+        }
+        let left_split: Vec<&str> = left.split(":").collect();
+        let hours;
+        let minutes;
+        let seconds;
+        if left_split.len() < 3 {
+            hours = 0.0;
+            minutes = left_split[0].parse::<f32>().unwrap();
+            seconds = left_split[1].parse::<f32>().unwrap();
+        } else {
+            hours = left_split[0].parse::<f32>().unwrap();
+            minutes = left_split[1].parse::<f32>().unwrap();
+            seconds = left_split[2].parse::<f32>().unwrap();
+        }
+        (millis / 1000.0) + seconds + minutes * 60.0 + hours * 3600.0
+    }
+
+    pub fn parse_duration(seconds: f32) -> Time {
+        let hours = (seconds / 3600.0).floor();
+        let remaining_seconds = seconds - 3600.0 * hours;
+
+        let minutes = (remaining_seconds / 60.0).floor();
+        let remaining_seconds = remaining_seconds - 60.0 * minutes;
+        let seconds = remaining_seconds.floor();
+
+        let millis = ((remaining_seconds - remaining_seconds.floor()) * 1000.0).floor();
+        let centis = ((remaining_seconds - remaining_seconds.floor()) * 100.0).floor();
+
+        Time {
+            hours,
+            minutes,
+            seconds,
+            centis,
+            millis,
+        }
+    }
+
+    pub fn desired_size(&self, width: Option<u32>) -> (u32, u32) {
+        let new_width = match width {
+            Some(w) => w,
+            None => DEFAULT_CONTACT_SHEET_WIDTH,
+        };
+        let ratio = new_width as f64 / f64::from(self.display_width.unwrap());
+        let desired_height = (self.display_height.unwrap() as f64 * ratio).floor();
+        (new_width, desired_height as u32)
+    }
+}
+
+const DEFAULT_CONTACT_SHEET_WIDTH: u32 = 1500;
+
+#[derive(Debug)]
+pub struct Time {
+    hours: f32,
+    minutes: f32,
+    seconds: f32,
+    centis: f32,
+    millis: f32,
 }
 
 #[derive(Clone, Default, Debug, Serialize, Deserialize)]
@@ -263,17 +342,17 @@ pub struct VideoStream {
     coded_width: Option<i32>,
     color_primaries: Option<String>,
     color_range: Option<String>,
-    color_space: Option<String>,
+    colr_space: Option<String>,
     color_transfer: Option<String>,
     chroma_location: Option<String>,
     display_aspect_ratio: String,
-    display_height: Option<i32>,
-    display_width: Option<i32>,
+    display_height: Option<u32>,
+    display_width: Option<u32>,
     disposition: Disposition,
     duration_ts: Option<i32>,
     duration: Option<String>,
     has_b_frames: i32,
-    height: i32,
+    height: Option<u32>,
     index: i32,
     is_avc: Option<String>,
     level: Option<i32>,
@@ -289,7 +368,7 @@ pub struct VideoStream {
     start_time: Option<String>,
     tags: StreamTags,
     time_base: Option<String>,
-    width: i32,
+    width: Option<u32>,
 }
 
 #[derive(Clone, Default, Debug, Serialize, Deserialize)]
@@ -337,9 +416,9 @@ fn default_sample_aspect_ratio() -> String {
 }
 
 #[derive(Debug, Default, Serialize, Deserialize)]
-struct Format {
+pub struct Format {
     bit_rate: String,
-    duration: String,
+    pub duration: String,
     filename: String,
     format_long_name: String,
     format_name: String,
@@ -363,5 +442,5 @@ struct FormatTags {
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub struct Ffprobe {
     streams: Vec<Stream>,
-    format: Format,
+    pub format: Format,
 }
