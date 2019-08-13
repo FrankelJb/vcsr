@@ -21,12 +21,12 @@ fn main() {
     let ffprobe = models::MediaInfo::probe_media(
         [
             "/",
-            "Users",
-            "jonfrankel",
-            "Desktop",
-            // "bbb_sunflower_2160p_60fps_normal.mp4",
+            "home",
+            "beans",
+            "Downloads",
+            "bbb_sunflower_2160p_60fps_normal.mp4",
             // "TEST VIDEO  - 4K with 19.5_9 aspect ratio-5JlYIVQxUk8.mkv",
-            "Just can't eat in peace!.mp4",
+            // "Just can't eat in peace!.mp4",
         ]
         .iter()
         .collect(),
@@ -46,17 +46,17 @@ fn main() {
         media_info.parse_attributes();
         info!("media_info: {:?}", media_info);
         let media_capture = models::MediaCapture::new(
-            "/Users/jonfrankel/Desktop/Just can't eat in peace!.mp4".to_string(),
+            "/home/beans/Downloads/bbb_sunflower_2160p_60fps_normal.mp4".to_string(),
             None,
             None,
             Some("key".to_string()),
         );
-        // media_capture.make_capture(
-        //     "00:00:09".to_string(),
-        //     media_info.display_width.unwrap(),
-        //     media_info.display_height.unwrap(),
-        //     None,
-        // );
-        models::MediaCapture::compute_avg_colour("out.png".to_string());
+        media_capture.make_capture(
+            "00:02:45".to_string(),
+            media_info.display_width.unwrap() / 10,
+            media_info.display_height.unwrap() / 10,
+            None,
+        );
+        models::MediaCapture::compute_avg_colour("out.jpg".to_string());
     }
 }

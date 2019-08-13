@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-use image::GenericImageView;
+use image;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::path::PathBuf;
@@ -356,7 +356,7 @@ impl MediaCapture {
         let skip_delay = MediaInfo::pretty_duration(self.skip_delay_seconds, false, true);
         let out_path = match out_path {
             Some(o) => o,
-            None => "out.png".to_string(),
+            None => "out.jpg".to_string(),
         };
 
         let mut select_args = match &self.frame_type {
@@ -376,15 +376,16 @@ impl MediaCapture {
         let time_seconds = MediaInfo::pretty_to_seconds(time.to_owned());
         let skip_time_seconds = time_seconds - self.skip_delay_seconds;
         let skip_time = MediaInfo::pretty_duration(skip_time_seconds, false, true);
-        let mut time_parts = if self.accurate || skip_time_seconds < 0.0 {
+        // FIXME: These ss need to be in the correct order
+        let mut args = if !self.accurate  { // || skip_time_seconds < 0.0 {
             vec!["-ss".to_string(), time]
         } else {
             vec!["-ss".to_string(), skip_time, "-ss".to_string(), skip_delay]
         };
 
-        let mut args = vec!["-i".to_string(), self.path.to_string()];
+        args.append(&mut vec!["-i".to_string(), self.path.to_string()]);
         let width_x_height = format!("{}x{}", width, height);
-        args.append(&mut time_parts);
+        // args.append(&mut time_parts);
         args.append(&mut vec![
             "-vframes".to_string(),
             "1".to_string(),
@@ -394,7 +395,7 @@ impl MediaCapture {
         args.append(&mut select_args);
         args.append(&mut vec!["-y".to_string(), out_path]);
 
-        info!("args: {:?}", args);
+        info!("args: {:?}", args.concat());
 
         Command::new("ffmpeg")
             .stdin(Stdio::null())
@@ -406,9 +407,19 @@ impl MediaCapture {
     }
 
     pub fn compute_avg_colour(image_path: String) {
-        let image = image::open(image_path).unwrap();
-        let pixel = image.to_rgb().get_pixel(0, 0).clone();
-        println!("I: {:?}", pixel);
+        let image = image::open(image_path).unwrap().to_rgba();
+        // image.resize(1, 1, image::FilterType::Nearest);
+        let rgbs: (u32, u32, u32) = image.enumerate_pixels().fold((0, 0, 0), |acc, (_, _, p)| {
+            // println!("acc {:?}", acc);
+            match p {
+                image::Rgba(rgb) => {
+                    (acc.0 + rgb[0] as u32, acc.1 + rgb[1] as u32, acc.2 + rgb[2] as u32)
+                },
+            }
+        });
+        let size = image.width() * image.height();
+
+        println!("R {}, G {}, B {}", rgbs.0 / size, rgbs.1 / size, rgbs.2 / size);
     }
 }
 
