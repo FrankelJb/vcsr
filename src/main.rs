@@ -1,8 +1,11 @@
 #![allow(dead_code)]
 
 extern crate env_logger;
+extern crate image;
 #[macro_use]
 extern crate log;
+#[macro_use]
+extern crate palette;
 extern crate serde;
 extern crate serde_json;
 
@@ -18,12 +21,12 @@ fn main() {
     let ffprobe = models::MediaInfo::probe_media(
         [
             "/",
-            "home",
-            "beans",
-            "Downloads",
+            "Users",
+            "jonfrankel",
+            "Desktop",
             // "bbb_sunflower_2160p_60fps_normal.mp4",
             // "TEST VIDEO  - 4K with 19.5_9 aspect ratio-5JlYIVQxUk8.mkv",
-            "/home/beans/Downloads/Adam Sandler 100% Fresh (2018) [WEBRip] [720p] [YTS.AM]/Adam.Sandler.100%.Fresh.2018.720p.WEBRip.x264-[YTS.AM].mp4"
+            "Just can't eat in peace!.mp4",
         ]
         .iter()
         .collect(),
@@ -40,5 +43,20 @@ fn main() {
         info!("to seconds: {}", seconds);
         info!("to Time: {:?}", models::MediaInfo::parse_duration(seconds));
         info!("desired_size: {:?}", &media_info.desired_size(None));
+        media_info.parse_attributes();
+        info!("media_info: {:?}", media_info);
+        let media_capture = models::MediaCapture::new(
+            "/Users/jonfrankel/Desktop/Just can't eat in peace!.mp4".to_string(),
+            None,
+            None,
+            Some("key".to_string()),
+        );
+        // media_capture.make_capture(
+        //     "00:00:09".to_string(),
+        //     media_info.display_width.unwrap(),
+        //     media_info.display_height.unwrap(),
+        //     None,
+        // );
+        models::MediaCapture::compute_avg_colour("out.png".to_string());
     }
 }

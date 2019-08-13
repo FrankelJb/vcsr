@@ -1,9 +1,10 @@
 #![allow(dead_code)]
 
+use image::GenericImageView;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::path::PathBuf;
-use std::process::Command; //, Output, Stdio};
+use std::process::{Command, Stdio};
 use std::{fmt, str};
 
 pub struct Grid {
@@ -46,14 +47,23 @@ impl Colour {
 #[derive(Debug, Default)]
 pub struct MediaInfo {
     pub ffprobe: Ffprobe,
-    pub sample_width: Option<u32>,
-    pub sample_height: Option<u32>,
-    pub display_width: Option<u32>,
+    pub audio_codec: Option<String>,
+    pub audio_codec_long: Option<String>,
+    pub audio_bit_rate: Option<u32>,
+    pub audio_sample_rate: Option<u32>,
+    pub display_aspect_ratio: Option<String>,
     pub display_height: Option<u32>,
+    pub display_width: Option<u32>,
     pub duration: String,
     pub filename: String,
+    pub frame_rate: u32,
+    pub sample_aspect_ratio: Option<String>,
+    pub sample_height: Option<u32>,
+    pub sample_width: Option<u32>,
     pub size_bytes: i32,
     pub size: String,
+    pub video_codec: Option<String>,
+    pub video_codec_long: Option<String>,
 }
 
 impl MediaInfo {
@@ -115,9 +125,9 @@ impl MediaInfo {
         })
     }
 
-    pub fn compute_display_resolution(&mut self) -> Stream {
+    pub fn compute_display_resolution(&mut self) {
         let video_stream = self.find_video_stream().unwrap().clone();
-        if let Stream::VideoStream(mut video_stream) = video_stream {
+        if let Stream::VideoStream(video_stream) = video_stream {
             self.sample_width = video_stream.width;
             self.sample_height = video_stream.height;
             if let Some(rotation) = video_stream.tags.rotate {
@@ -127,11 +137,13 @@ impl MediaInfo {
                     std::mem::swap(&mut self.sample_width, &mut self.sample_height)
                 }
             }
-            if video_stream.sample_aspect_ratio == "1:1" {
+
+            let sample_aspect_ratio = video_stream.sample_aspect_ratio;
+            if sample_aspect_ratio == "1:1" {
                 self.display_width = self.sample_width;
                 self.display_height = self.sample_height;
             } else {
-                let mut sample_split = video_stream.sample_aspect_ratio.split(":").into_iter();
+                let mut sample_split = sample_aspect_ratio.split(":").into_iter();
                 let sw = sample_split
                     .next()
                     .unwrap()
@@ -156,17 +168,14 @@ impl MediaInfo {
 
             if let Some(option_display_width) = self.display_width {
                 if option_display_width == 0 {
-                    video_stream.display_width = self.sample_width;
+                    self.display_width = self.sample_width;
                 }
             }
             if let Some(option_display_height) = self.display_height {
                 if option_display_height == 0 {
-                    video_stream.display_height = self.sample_height;
+                    self.display_height = self.sample_height;
                 }
             }
-            Stream::VideoStream(video_stream)
-        } else {
-            video_stream
         }
     }
 
@@ -179,7 +188,8 @@ impl MediaInfo {
                 None => &self.ffprobe.format.duration,
             };
             info!("duration before is {}", duration);
-            self.duration = self.pretty_duration(duration.parse::<f32>().unwrap(), true, true);
+            self.duration =
+                MediaInfo::pretty_duration(duration.parse::<f32>().unwrap(), true, true);
             self.filename = self.ffprobe.format.duration.to_string();
             self.size_bytes = self.ffprobe.format.size.parse().unwrap();
             self.size =
@@ -188,7 +198,7 @@ impl MediaInfo {
     }
 
     // Converts seconds to a human readable time format
-    pub fn pretty_duration(&self, seconds: f32, show_centis: bool, show_millis: bool) -> String {
+    pub fn pretty_duration(seconds: f32, show_centis: bool, show_millis: bool) -> String {
         let hours = (seconds / 3600.0).floor();
         let remaining_seconds = seconds - 3600.0 * hours;
 
@@ -278,9 +288,133 @@ impl MediaInfo {
         let desired_height = (self.display_height.unwrap() as f64 * ratio).floor();
         (new_width, desired_height as u32)
     }
+
+    // Parse multiple media attributes
+    pub fn parse_attributes(&mut self) {
+        // video
+        let video_stream = self.find_video_stream().unwrap().clone();
+        if let Stream::VideoStream(video_stream) = video_stream {
+            self.video_codec = video_stream.codec_name;
+            self.video_codec_long = video_stream.codec_long_name;
+            self.sample_aspect_ratio = Some(video_stream.sample_aspect_ratio);
+            self.display_aspect_ratio = video_stream.display_aspect_ratio;
+            if let Some(avg_frame_rate) = video_stream.avg_frame_rate {
+                let splits: Vec<&str> = avg_frame_rate.split("/").collect();
+                let frame_rate: u32;
+                if splits.len() == 2 {
+                    frame_rate =
+                        (splits[0]).parse::<u32>().unwrap() / splits[1].parse::<u32>().unwrap();
+                } else {
+                    frame_rate = avg_frame_rate.parse::<u32>().unwrap();
+                }
+
+                self.frame_rate = frame_rate;
+            }
+        }
+        if let Some(audio_stream) = self.find_audio_stream() {
+            if let Stream::AudioStream(audio_stream) = audio_stream.clone() {
+                self.audio_codec = Some(audio_stream.codec_name);
+                self.audio_codec_long = audio_stream.codec_long_name;
+                self.audio_sample_rate = Some(audio_stream.sample_rate.unwrap().parse().unwrap());
+                self.audio_bit_rate = Some(audio_stream.bit_rate.unwrap().parse().unwrap());
+            }
+        }
+    }
 }
 
+pub struct MediaCapture {
+    path: String,
+    accurate: bool,
+    skip_delay_seconds: f32,
+    frame_type: Option<String>,
+}
+
+impl MediaCapture {
+    pub fn new(
+        path: String,
+        accurate: Option<bool>,
+        skip_delay_seconds: Option<f32>,
+        frame_type: Option<String>,
+    ) -> MediaCapture {
+        let accurate = match accurate {
+            Some(a) => a,
+            None => false,
+        };
+        let skip_delay_seconds = match skip_delay_seconds {
+            Some(s) => s,
+            None => DEFAULT_ACCURATE_DELAY_SECONDS,
+        };
+        MediaCapture {
+            path: path,
+            accurate: accurate,
+            skip_delay_seconds: skip_delay_seconds,
+            frame_type: frame_type,
+        }
+    }
+
+    pub fn make_capture(&self, time: String, width: u32, height: u32, out_path: Option<String>) {
+        let skip_delay = MediaInfo::pretty_duration(self.skip_delay_seconds, false, true);
+        let out_path = match out_path {
+            Some(o) => o,
+            None => "out.png".to_string(),
+        };
+
+        let mut select_args = match &self.frame_type {
+            Some(frame_type) => {
+                if frame_type == "key" {
+                    vec!["-vf".to_string(), "select=key".to_string()]
+                } else {
+                    vec![
+                        "-vf".to_string(),
+                        format!("select='eq(frame_type,{})", frame_type).to_string(),
+                    ]
+                }
+            }
+            None => Vec::new(),
+        };
+
+        let time_seconds = MediaInfo::pretty_to_seconds(time.to_owned());
+        let skip_time_seconds = time_seconds - self.skip_delay_seconds;
+        let skip_time = MediaInfo::pretty_duration(skip_time_seconds, false, true);
+        let mut time_parts = if self.accurate || skip_time_seconds < 0.0 {
+            vec!["-ss".to_string(), time]
+        } else {
+            vec!["-ss".to_string(), skip_time, "-ss".to_string(), skip_delay]
+        };
+
+        let mut args = vec!["-i".to_string(), self.path.to_string()];
+        let width_x_height = format!("{}x{}", width, height);
+        args.append(&mut time_parts);
+        args.append(&mut vec![
+            "-vframes".to_string(),
+            "1".to_string(),
+            "-s".to_string(),
+            width_x_height,
+        ]);
+        args.append(&mut select_args);
+        args.append(&mut vec!["-y".to_string(), out_path]);
+
+        info!("args: {:?}", args);
+
+        Command::new("ffmpeg")
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .args(args)
+            .spawn()
+            .expect("Handle this");
+    }
+
+    pub fn compute_avg_colour(image_path: String) {
+        let image = image::open(image_path).unwrap();
+        let pixel = image.to_rgb().get_pixel(0, 0).clone();
+        println!("I: {:?}", pixel);
+    }
+}
+
+const DEFAULT_ACCURATE_DELAY_SECONDS: f32 = 1.0;
 const DEFAULT_CONTACT_SHEET_WIDTH: u32 = 1500;
+const DEFAULT_FRAME_TYPE: Option<u8> = None;
 
 #[derive(Debug)]
 pub struct Time {
@@ -345,7 +479,7 @@ pub struct VideoStream {
     colr_space: Option<String>,
     color_transfer: Option<String>,
     chroma_location: Option<String>,
-    display_aspect_ratio: String,
+    display_aspect_ratio: Option<String>,
     display_height: Option<u32>,
     display_width: Option<u32>,
     disposition: Disposition,
