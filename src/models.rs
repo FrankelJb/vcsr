@@ -1,11 +1,14 @@
 #![allow(dead_code)]
 
+use crate::constants::*;
 use image;
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
-use std::path::PathBuf;
+use std::io;
+use std::path::Path;
 use std::process::{Command, Stdio};
 use std::{fmt, str};
+
+use rustfft::{num_complex::Complex, num_traits::Zero, FFTplanner};
 
 pub struct Grid {
     pub x: u32,
@@ -55,6 +58,7 @@ pub struct MediaInfo {
     pub display_height: Option<u32>,
     pub display_width: Option<u32>,
     pub duration: String,
+    pub duration_seconds: f32,
     pub filename: String,
     pub frame_rate: u32,
     pub sample_aspect_ratio: Option<String>,
@@ -67,32 +71,37 @@ pub struct MediaInfo {
 }
 
 impl MediaInfo {
-    pub fn probe_media(path: PathBuf) -> Option<Ffprobe> {
-        //-> Result<Output, std::io::Error> {
-        let output = Command::new("ffprobe")
-            .arg("-v")
-            .arg("quiet")
-            .arg("-print_format")
-            .arg("json")
-            .arg("-show_format")
-            .arg("-show_streams")
-            .arg(path.into_os_string())
-            .output()
-            .expect("HANDLE THIS");
+    pub fn probe_media(path: &Path) -> Result<Ffprobe, io::Error> {
+        if path.exists() {
+            let output = Command::new("ffprobe")
+                // .arg("-v")
+                // .arg("quiet")
+                .arg("-print_format")
+                .arg("json")
+                .arg("-show_format")
+                .arg("-show_streams")
+                .arg(path)
+                .output()?;
 
-        if let Ok(stdout) = str::from_utf8(&output.stdout) {
-            // info!("{}", stdout);
-            let v: Value = serde_json::from_str(stdout).unwrap();
-            info!("{:#?}", v);
-            let r = serde_json::from_str::<Ffprobe>(stdout);
-            match r {
-                Ok(_) => println!(""),
-                Err(err) => error!("{}", err),
-            };
-            let v: Ffprobe = serde_json::from_str(stdout).unwrap();
-            Some(v)
+            if let Ok(stdout) = str::from_utf8(&output.stdout) {
+                let r = serde_json::from_str::<Ffprobe>(stdout);
+                match r {
+                    Ok(_) => println!(""),
+                    Err(err) => error!("{}", err),
+                };
+                let v: Ffprobe = serde_json::from_str(stdout).unwrap();
+                Ok(v)
+            } else {
+                Err(io::Error::new(
+                    io::ErrorKind::Other,
+                    "ffprobe crashed unexpectedly",
+                ))
+            }
         } else {
-            None
+            Err(io::Error::new(
+                io::ErrorKind::Other,
+                "cannot find requested file",
+            ))
         }
     }
 
@@ -131,7 +140,6 @@ impl MediaInfo {
             self.sample_width = video_stream.width;
             self.sample_height = video_stream.height;
             if let Some(rotation) = video_stream.tags.rotate {
-                info!("Rotation is: {}", rotation);
                 // Swap width and height
                 if rotation == 90 {
                     std::mem::swap(&mut self.sample_width, &mut self.sample_height)
@@ -156,10 +164,6 @@ impl MediaInfo {
                     .to_string()
                     .parse::<u32>()
                     .unwrap();
-
-                info!("sw: {}", sw);
-                info!("sh: {}", sh);
-                info!("sample_width: {:?}", self.sample_width);
 
                 let new_sample_width = self.sample_width.unwrap() * sw / sh;
                 self.display_width = Some(new_sample_width);
@@ -186,8 +190,10 @@ impl MediaInfo {
             let duration = match &video_stream.duration {
                 Some(duration) => duration,
                 None => &self.ffprobe.format.duration,
-            };
-            info!("duration before is {}", duration);
+            }
+            .to_string();
+            let duration_seconds = duration.parse::<f32>().unwrap();
+            self.duration_seconds = duration_seconds;
             self.duration =
                 MediaInfo::pretty_duration(duration.parse::<f32>().unwrap(), true, true);
             self.filename = self.ffprobe.format.duration.to_string();
@@ -377,7 +383,8 @@ impl MediaCapture {
         let skip_time_seconds = time_seconds - self.skip_delay_seconds;
         let skip_time = MediaInfo::pretty_duration(skip_time_seconds, false, true);
         // FIXME: These ss need to be in the correct order
-        let mut args = if !self.accurate  { // || skip_time_seconds < 0.0 {
+        let mut args = if !self.accurate {
+            // || skip_time_seconds < 0.0 {
             vec!["-ss".to_string(), time]
         } else {
             vec!["-ss".to_string(), skip_time, "-ss".to_string(), skip_delay]
@@ -395,7 +402,7 @@ impl MediaCapture {
         args.append(&mut select_args);
         args.append(&mut vec!["-y".to_string(), out_path]);
 
-        info!("args: {:?}", args.concat());
+        // info!("args: {:?}", args.concat());
 
         Command::new("ffmpeg")
             .stdin(Stdio::null())
@@ -407,25 +414,85 @@ impl MediaCapture {
     }
 
     pub fn compute_avg_colour(image_path: String) {
-        let image = image::open(image_path).unwrap().to_rgba();
-        // image.resize(1, 1, image::FilterType::Nearest);
-        let rgbs: (u32, u32, u32) = image.enumerate_pixels().fold((0, 0, 0), |acc, (_, _, p)| {
-            // println!("acc {:?}", acc);
-            match p {
-                image::Rgba(rgb) => {
-                    (acc.0 + rgb[0] as u32, acc.1 + rgb[1] as u32, acc.2 + rgb[2] as u32)
-                },
-            }
-        });
-        let size = image.width() * image.height();
+        //TODO: Result
+        if Path::new(&image_path).exists() {
+            let image = image::open(image_path).unwrap().to_rgba();
+            // image.resize(1, 1, image::FilterType::Nearest);
+            let rgbs: (u32, u32, u32) =
+                image.enumerate_pixels().fold((0, 0, 0), |acc, (_, _, p)| {
+                    // println!("acc {:?}", acc);
+                    match p {
+                        image::Rgba(rgb) => (
+                            acc.0 + rgb[0] as u32,
+                            acc.1 + rgb[1] as u32,
+                            acc.2 + rgb[2] as u32,
+                        ),
+                    }
+                });
+            let size = image.width() * image.height();
 
-        println!("R {}, G {}, B {}", rgbs.0 / size, rgbs.1 / size, rgbs.2 / size);
+            println!(
+                "R {}, G {}, B {}",
+                rgbs.0 / size,
+                rgbs.1 / size,
+                rgbs.2 / size
+            );
+        } else {
+            error!("image_path doesn't exist {}", image_path);
+        }
+    }
+
+    pub fn compute_blurrines(image_path: String) -> f32 {
+        if Path::new(&image_path).exists() {
+            let image = image::open(image_path).unwrap().to_luma();
+            // let mut input: Vec<f32> = Vec::with_capacity(image.width() as usize * image.height() as usize);
+            let mut input: Vec<Complex<f32>> = image
+                .enumerate_pixels()
+                .map(|(_, _, p)| match p {
+                    image::Luma(g) => Complex {
+                        re: g[0] as f32,
+                        im: 0.0,
+                    },
+                })
+                .collect();
+
+            let mut output: Vec<Complex<f32>> = vec![Zero::zero(); input.len()];
+
+            let mut planner = FFTplanner::new(false);
+            let fft = planner.plan_fft(input.len());
+            fft.process(&mut input, &mut output);
+
+            let mut collected: Vec<f32> = output
+                .into_iter()
+                .map(|c| match c {
+                    Complex { re, im: _ } => (re).abs(),
+                })
+                .collect();
+            collected.sort_by(|a, b| b.partial_cmp(&a).unwrap());
+            collected.dedup();
+            let max_freq = MediaCapture::avg9x(collected, None);
+        }
+        0.0
+    }
+
+    pub fn avg9x(matrix: Vec<f32>, percentage: Option<f32>) -> f32 {
+        let percentage = match percentage {
+            Some(percentage) => percentage,
+            None => 0.05
+        };
+
+        let length = (percentage * matrix.len() as f32).floor() as usize;
+        let matrix_subset = &matrix[0..length];
+        if length % 2 == 0 {
+            info!("matrix_subset[length / 2 - 1] {}", matrix_subset[length / 2 - 1]);
+            info!("matrix_subset[length / 2] {}", matrix_subset[length / 2]);
+            //  + matrix_subset[length / 2]) / 2.0
+            (matrix_subset[length / 2 - 1] + matrix_subset[length / 2]) / 2.0
+        } else {
+            matrix_subset[(length - 1) ] / 2.0
+        }
     }
 }
-
-const DEFAULT_ACCURATE_DELAY_SECONDS: f32 = 1.0;
-const DEFAULT_CONTACT_SHEET_WIDTH: u32 = 1500;
-const DEFAULT_FRAME_TYPE: Option<u8> = None;
 
 #[derive(Debug)]
 pub struct Time {
@@ -588,4 +655,32 @@ struct FormatTags {
 pub struct Ffprobe {
     streams: Vec<Stream>,
     pub format: Format,
+}
+
+pub struct Args {
+    pub interval: Option<Interval>,
+    pub num_samples: u8,
+    pub start_delay_percent: f32,
+    pub end_delay_percent: f32,
+}
+
+impl Default for Args {
+    fn default() -> Self {
+        Args {
+            interval: None,
+            num_samples: 8,
+            start_delay_percent: 7.0,
+            end_delay_percent: 7.0,
+        }
+    }
+}
+
+pub struct Interval {
+    pub interval: String,
+}
+
+impl Interval {
+    pub fn total_seconds(&self) -> f32 {
+        1.0
+    }
 }
