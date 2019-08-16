@@ -147,6 +147,7 @@ impl MediaInfo {
             }
 
             let sample_aspect_ratio = video_stream.sample_aspect_ratio;
+            debug!("sample_aspect_ratio {}", sample_aspect_ratio);
             if sample_aspect_ratio == "1:1" {
                 self.display_width = self.sample_width;
                 self.display_height = self.sample_height;
@@ -180,6 +181,8 @@ impl MediaInfo {
                     self.display_height = self.sample_height;
                 }
             }
+            debug!("self.display_width {:?}", self.display_width);
+            debug!("self.display_height {:?}", self.display_height);
         }
     }
 
@@ -372,7 +375,7 @@ impl MediaCapture {
                 } else {
                     vec![
                         "-vf".to_string(),
-                        format!("select='eq(frame_type,{})", frame_type).to_string(),
+                        format!("\'select=eq(frame_type\\,{})\'", frame_type).to_string(),
                     ]
                 }
             }
@@ -402,7 +405,7 @@ impl MediaCapture {
         args.append(&mut select_args);
         args.append(&mut vec!["-y".to_string(), out_path]);
 
-        // info!("args: {:?}", args.concat());
+        info!("args: {:?}", args.join(" "));
 
         Command::new("ffmpeg")
             .stdin(Stdio::null())
@@ -443,6 +446,7 @@ impl MediaCapture {
     }
 
     pub fn compute_blurrines(image_path: String) -> f32 {
+        // TODO: Handle this result rather than return 0.0
         if Path::new(&image_path).exists() {
             let image = image::open(image_path).unwrap().to_luma();
             // let mut input: Vec<f32> = Vec::with_capacity(image.width() as usize * image.height() as usize);
@@ -471,6 +475,11 @@ impl MediaCapture {
             collected.sort_by(|a, b| b.partial_cmp(&a).unwrap());
             collected.dedup();
             let max_freq = MediaCapture::avg9x(collected, None);
+            if max_freq > 0.0 {
+                return 1.0 / max_freq;
+            } else {
+                return 1.0;
+            }
         }
         0.0
     }
@@ -478,19 +487,26 @@ impl MediaCapture {
     pub fn avg9x(matrix: Vec<f32>, percentage: Option<f32>) -> f32 {
         let percentage = match percentage {
             Some(percentage) => percentage,
-            None => 0.05
+            None => 0.05,
         };
 
         let length = (percentage * matrix.len() as f32).floor() as usize;
         let matrix_subset = &matrix[0..length];
         if length % 2 == 0 {
-            info!("matrix_subset[length / 2 - 1] {}", matrix_subset[length / 2 - 1]);
+            info!(
+                "matrix_subset[length / 2 - 1] {}",
+                matrix_subset[length / 2 - 1]
+            );
             info!("matrix_subset[length / 2] {}", matrix_subset[length / 2]);
             //  + matrix_subset[length / 2]) / 2.0
             (matrix_subset[length / 2 - 1] + matrix_subset[length / 2]) / 2.0
         } else {
-            matrix_subset[(length - 1) ] / 2.0
+            matrix_subset[(length - 1)] / 2.0
         }
+    }
+
+    fn max_req(matrix: Vec<f32>) -> f32 {
+        *matrix.first().unwrap()
     }
 }
 
@@ -659,18 +675,26 @@ pub struct Ffprobe {
 
 pub struct Args {
     pub interval: Option<Interval>,
-    pub num_samples: u8,
+    pub num_samples: Option<u32>,
     pub start_delay_percent: f32,
     pub end_delay_percent: f32,
+    pub grid: Option<Grid>,
+}
+
+impl Args {
+    fn num_samples(grid: Grid) -> Option<u32> {
+        Some(grid.x * grid.y)
+    }
 }
 
 impl Default for Args {
     fn default() -> Self {
         Args {
             interval: None,
-            num_samples: 8,
+            num_samples: Args::num_samples(DEFAULT_GRID_SPACING),
             start_delay_percent: 7.0,
             end_delay_percent: 7.0,
+            grid: Some(DEFAULT_GRID_SPACING)
         }
     }
 }

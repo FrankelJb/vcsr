@@ -34,30 +34,20 @@ fn main() {
     // info!("duration: {}", media_info.duration);
     media_info.parse_attributes();
     // info!("media_info: {:?}", media_info);
-    let media_capture =
-        models::MediaCapture::new(args[1].to_string(), None, None, Some("key".to_string()));
-    media_capture.make_capture(
-        "00:02:45".to_string(),
-        10,
-        10,
-        // media_info.display_width.unwrap() / 10,
-        // media_info.display_height.unwrap() / 10,
-        None,
-    );
+    let media_capture = models::MediaCapture::new(args[1].to_string(), None, None, None);
+    // media_capture.make_capture(
+    //     "00:02:45".to_string(),
+    //     media_info.display_width.unwrap() / 3,
+    //     media_info.display_height.unwrap() / 3,
+    //     None,
+    // );
     models::MediaCapture::compute_avg_colour("out.jpg".to_string());
 
-    models::MediaCapture::compute_blurrines("out.jpg".to_string());
+    debug!(
+        "blurinness is {}",
+        models::MediaCapture::compute_blurrines("out.jpg".to_string())
+    );
 
-    info!(
-        "avg9x: {}",
-        models::MediaCapture::avg9x(
-            vec![
-                20.0, 19.0, 18.0, 17.0, 16.0, 15.0, 14.0, 13.0, 12.0, 11.0, 10.0, 9.0, 8.0, 7.0,
-                6.0, 5.0, 4.0, 3.0, 2.0, 1.0,
-            ],
-            None
-        )
-    )
-    // let args: models::Args = Default::default();
-    // info!("{:?}", operations::timestamp_generator(&media_info, &args));
+    let args: models::Args = Default::default();
+    info!("{:?}", operations::timestamp_generator(&media_info, &args));
 }

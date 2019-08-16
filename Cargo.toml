@@ -5,6 +5,7 @@ authors = ["Jonathan Frankel <frankel.jb@gmail.com>"]
 edition = "2018"
 
 [dependencies]
+chrono = "0.4.7"
 dotenv = "0.14.1"
 env_logger = "0.6.2"
 image = "0.22.1"

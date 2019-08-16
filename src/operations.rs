@@ -24,8 +24,8 @@ pub fn grid_desired_size(
 
 pub fn total_delay_seconds(media_info: &MediaInfo, args: &Args) -> f32 {
     let start_delay_seconds =
-        (media_info.duration_seconds + args.start_delay_percent / 100.0).floor();
-    let end_delay_seconds = (media_info.duration_seconds + args.end_delay_percent / 100.0).floor();
+        (media_info.duration_seconds * args.start_delay_percent / 100.0).floor();
+    let end_delay_seconds = (media_info.duration_seconds * args.end_delay_percent / 100.0).floor();
     start_delay_seconds + end_delay_seconds
 }
 
@@ -33,12 +33,15 @@ pub fn timestamp_generator(media_info: &MediaInfo, args: &Args) -> Vec<(f32, Str
     let delay = total_delay_seconds(media_info, args);
     let capture_interval = match &args.interval {
         Some(interval) => interval.total_seconds(),
-        None => (media_info.duration_seconds - delay) / (args.num_samples as f32 + 1.0),
+        None => (media_info.duration_seconds - delay) / (args.num_samples.unwrap() as f32 + 1.0),
     };
+
+    debug!("delay {}", delay);
+    debug!("capture_interval {}", capture_interval);
 
     let mut time = (media_info.duration_seconds * args.start_delay_percent / 100.0).floor();
 
-    (0..args.num_samples)
+    (0..args.num_samples.unwrap())
         .into_iter()
         .map(|_| {
             time = time + capture_interval;
