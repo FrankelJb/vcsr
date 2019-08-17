@@ -2,6 +2,7 @@
 
 use crate::constants::*;
 use image;
+use palette::{Lab, Srgb};
 use serde::{Deserialize, Serialize};
 use std::io;
 use std::path::Path;
@@ -10,6 +11,7 @@ use std::{fmt, str};
 
 use rustfft::{num_complex::Complex, num_traits::Zero, FFTplanner};
 
+#[derive(Clone, Debug, Default)]
 pub struct Grid {
     pub x: u32,
     pub y: u32,
@@ -21,33 +23,15 @@ impl fmt::Display for Grid {
     }
 }
 
+#[derive(Clone, Debug)]
 pub struct Frame {
+    pub avg_colour: Option<Lab>,
+    pub blurriness: f32,
     pub filename: String,
-    pub blurriness: String,
-    pub timestamp: String,
-    pub avg_colour: String,
+    pub timestamp: f32,
 }
 
-pub struct Colour {
-    pub r: u32,
-    pub g: u32,
-    pub b: u32,
-    pub a: u32,
-}
-
-impl fmt::Display for Colour {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}{}{}{}", self.r, self.g, self.b, self.a)
-    }
-}
-
-impl Colour {
-    pub fn to_hex(self, component: u32) -> String {
-        format!("{:X}", component)
-    }
-}
-
-#[derive(Debug, Default)]
+#[derive(Clone, Debug, Default)]
 pub struct MediaInfo {
     pub ffprobe: Ffprobe,
     pub audio_codec: Option<String>,
@@ -405,49 +389,47 @@ impl MediaCapture {
         args.append(&mut select_args);
         args.append(&mut vec!["-y".to_string(), out_path]);
 
-        info!("args: {:?}", args.join(" "));
-
         Command::new("ffmpeg")
             .stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .args(args)
-            .spawn()
+            .output()
             .expect("Handle this");
     }
 
-    pub fn compute_avg_colour(image_path: String) {
+    pub fn compute_avg_colour(image_path: &str) -> Option<Lab> {
         //TODO: Result
-        if Path::new(&image_path).exists() {
+        if Path::new(image_path).exists() {
             let image = image::open(image_path).unwrap().to_rgba();
-            // image.resize(1, 1, image::FilterType::Nearest);
-            let rgbs: (u32, u32, u32) =
-                image.enumerate_pixels().fold((0, 0, 0), |acc, (_, _, p)| {
-                    // println!("acc {:?}", acc);
-                    match p {
-                        image::Rgba(rgb) => (
-                            acc.0 + rgb[0] as u32,
-                            acc.1 + rgb[1] as u32,
-                            acc.2 + rgb[2] as u32,
-                        ),
-                    }
-                });
-            let size = image.width() * image.height();
+            let rgbs: (f32, f32, f32) =
+                image
+                    .enumerate_pixels()
+                    .fold((0.0, 0.0, 0.0), |acc, (_, _, p)| {
+                        // println!("acc {:?}", acc);
+                        match p {
+                            image::Rgba(rgb) => (
+                                acc.0 + rgb[0] as f32,
+                                acc.1 + rgb[1] as f32,
+                                acc.2 + rgb[2] as f32,
+                            ),
+                        }
+                    });
+            let size = image.width() as f32 * image.height() as f32;
 
-            println!(
-                "R {}, G {}, B {}",
-                rgbs.0 / size,
-                rgbs.1 / size,
-                rgbs.2 / size
-            );
+            Some(Srgb::new(rgbs.0 / size, rgbs.1 / size, rgbs.2 / size).into())
         } else {
             error!("image_path doesn't exist {}", image_path);
+            None
         }
     }
 
-    pub fn compute_blurrines(image_path: String) -> f32 {
+    pub fn compute_blurrines(image_path: &str) -> f32 {
         // TODO: Handle this result rather than return 0.0
-        if Path::new(&image_path).exists() {
+        if Path::new(image_path).exists() {
+            let f = std::fs::File::open(image_path).unwrap();
+            drop(f);
+
             let image = image::open(image_path).unwrap().to_luma();
             // let mut input: Vec<f32> = Vec::with_capacity(image.width() as usize * image.height() as usize);
             let mut input: Vec<Complex<f32>> = image
@@ -493,12 +475,6 @@ impl MediaCapture {
         let length = (percentage * matrix.len() as f32).floor() as usize;
         let matrix_subset = &matrix[0..length];
         if length % 2 == 0 {
-            info!(
-                "matrix_subset[length / 2 - 1] {}",
-                matrix_subset[length / 2 - 1]
-            );
-            info!("matrix_subset[length / 2] {}", matrix_subset[length / 2]);
-            //  + matrix_subset[length / 2]) / 2.0
             (matrix_subset[length / 2 - 1] + matrix_subset[length / 2]) / 2.0
         } else {
             matrix_subset[(length - 1)] / 2.0
@@ -643,7 +619,7 @@ fn default_sample_aspect_ratio() -> String {
     "1:1".to_string()
 }
 
-#[derive(Debug, Default, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct Format {
     bit_rate: String,
     pub duration: String,
@@ -658,7 +634,7 @@ pub struct Format {
     tags: FormatTags,
 }
 
-#[derive(Debug, Default, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 struct FormatTags {
     creation_time: Option<String>,
     compatible_brands: Option<String>,
@@ -667,18 +643,26 @@ struct FormatTags {
     minor_version: Option<String>,
 }
 
-#[derive(Debug, Default, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct Ffprobe {
     streams: Vec<Stream>,
     pub format: Format,
 }
 
 pub struct Args {
-    pub interval: Option<Interval>,
-    pub num_samples: Option<u32>,
-    pub start_delay_percent: f32,
     pub end_delay_percent: f32,
+    pub fast: bool,
     pub grid: Option<Grid>,
+    pub grid_horizontal_spacing: u32,
+    pub grid_vertical_spacing: u32,
+    pub input_path: String,
+    pub interval: Option<Interval>,
+    pub manual_timestamps: Option<Vec<String>>,
+    pub num_groups: u32,
+    pub num_samples: Option<u32>,
+    pub num_selected: u32,
+    pub start_delay_percent: f32,
+    pub vcs_width: u32,
 }
 
 impl Args {
@@ -690,11 +674,20 @@ impl Args {
 impl Default for Args {
     fn default() -> Self {
         Args {
-            interval: None,
-            num_samples: Args::num_samples(DEFAULT_GRID_SPACING),
-            start_delay_percent: 7.0,
             end_delay_percent: 7.0,
-            grid: Some(DEFAULT_GRID_SPACING)
+            fast: false,
+            grid: Some(DEFAULT_GRID_SPACING),
+            grid_horizontal_spacing: DEFAULT_GRID_HORIZONTAL_SPACING,
+            grid_vertical_spacing: DEFAULT_GRID_VERTICAL_SPACING,
+            interval: None,
+            input_path: "".to_string(),
+            manual_timestamps: None,
+            // TODO: Change this to the right thing
+            num_groups: 5,
+            num_samples: Args::num_samples(DEFAULT_GRID_SPACING),
+            num_selected: DEFAULT_GRID_SPACING.x * DEFAULT_GRID_SPACING.y,
+            start_delay_percent: 7.0,
+            vcs_width: DEFAULT_CONTACT_SHEET_WIDTH,
         }
     }
 }
