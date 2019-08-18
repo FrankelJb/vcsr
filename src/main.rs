@@ -10,6 +10,7 @@ extern crate rand;
 extern crate rayon;
 extern crate serde;
 extern crate serde_json;
+extern crate textwrap;
 
 mod args;
 mod constants;
@@ -39,7 +40,7 @@ fn main() {
     // info!("duration: {}", media_info.duration);
     media_info.parse_attributes();
     // info!("media_info: {:?}", media_info);
-    let media_capture = models::MediaCapture::new(args.input_path.to_string(), None, None, None);
+    let _media_capture = models::MediaCapture::new(args.input_path.to_string(), None, None, None);
     // media_capture.make_capture(
     //     "00:02:45".to_string(),
     //     media_info.display_width.unwrap() / 3,
@@ -54,5 +55,14 @@ fn main() {
     );
 
     info!("{:?}", operations::timestamp_generator(&media_info, &args));
-    operations::select_sharpest_images(&media_info, &media_capture, &args);
+    let font = operations::load_font(
+        &args,
+        None,
+        "/home/beans/projects/rust/imageproc/font/src/DejaVuSans.ttf",
+    );
+    info!(
+        "{:?}",
+        operations::prepare_metadata_text_lines(&media_info, font, 10, 1499)
+    );
+    // operations::select_sharpest_images(&media_info, &media_capture, &args);
 }

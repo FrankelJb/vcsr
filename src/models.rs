@@ -2,7 +2,6 @@
 
 use crate::constants::*;
 use image;
-use palette::{Lab, Srgb};
 use serde::{Deserialize, Serialize};
 use std::io;
 use std::path::Path;
@@ -25,7 +24,7 @@ impl fmt::Display for Grid {
 
 #[derive(Clone, Debug)]
 pub struct Frame {
-    pub avg_colour: Option<Lab>,
+    pub avg_colour: f32,
     pub blurriness: f32,
     pub filename: String,
     pub timestamp: f32,
@@ -183,7 +182,12 @@ impl MediaInfo {
             self.duration_seconds = duration_seconds;
             self.duration =
                 MediaInfo::pretty_duration(duration.parse::<f32>().unwrap(), true, true);
-            self.filename = self.ffprobe.format.duration.to_string();
+
+            self.filename = Path::new(&self.ffprobe.format.filename)
+                .file_name()
+                .unwrap()
+                .to_string_lossy()
+                .into_owned();
             self.size_bytes = self.ffprobe.format.size.parse().unwrap();
             self.size =
                 MediaInfo::human_readable_size(self.ffprobe.format.size.parse::<f64>().unwrap());
@@ -272,14 +276,17 @@ impl MediaInfo {
         }
     }
 
-    pub fn desired_size(&self, width: Option<u32>) -> (u32, u32) {
+    pub fn desired_size(&self, width: Option<u32>) -> Grid {
         let new_width = match width {
             Some(w) => w,
             None => DEFAULT_CONTACT_SHEET_WIDTH,
         };
         let ratio = new_width as f64 / f64::from(self.display_width.unwrap());
         let desired_height = (self.display_height.unwrap() as f64 * ratio).floor();
-        (new_width, desired_height as u32)
+        Grid {
+            x: new_width,
+            y: desired_height as u32,
+        }
     }
 
     // Parse multiple media attributes
@@ -398,29 +405,25 @@ impl MediaCapture {
             .expect("Handle this");
     }
 
-    pub fn compute_avg_colour(image_path: &str) -> Option<Lab> {
+    pub fn compute_avg_colour(image_path: &str) -> f32 {
         //TODO: Result
         if Path::new(image_path).exists() {
             let image = image::open(image_path).unwrap().to_rgba();
             let rgbs: (f32, f32, f32) =
                 image
                     .enumerate_pixels()
-                    .fold((0.0, 0.0, 0.0), |acc, (_, _, p)| {
-                        // println!("acc {:?}", acc);
-                        match p {
-                            image::Rgba(rgb) => (
-                                acc.0 + rgb[0] as f32,
-                                acc.1 + rgb[1] as f32,
-                                acc.2 + rgb[2] as f32,
-                            ),
-                        }
+                    .fold((0.0, 0.0, 0.0), |acc, (_, _, p)| match p {
+                        image::Rgba { data: rgb } => (
+                            acc.0 + rgb[0] as f32,
+                            acc.1 + rgb[1] as f32,
+                            acc.2 + rgb[2] as f32,
+                        ),
                     });
             let size = image.width() as f32 * image.height() as f32;
-
-            Some(Srgb::new(rgbs.0 / size, rgbs.1 / size, rgbs.2 / size).into())
+            (rgbs.0 / size + rgbs.1 / size + rgbs.2 / size) / 3.0
         } else {
             error!("image_path doesn't exist {}", image_path);
-            None
+            0.0
         }
     }
 
@@ -431,11 +434,10 @@ impl MediaCapture {
             drop(f);
 
             let image = image::open(image_path).unwrap().to_luma();
-            // let mut input: Vec<f32> = Vec::with_capacity(image.width() as usize * image.height() as usize);
             let mut input: Vec<Complex<f32>> = image
                 .enumerate_pixels()
                 .map(|(_, _, p)| match p {
-                    image::Luma(g) => Complex {
+                    image::Luma { data: g } => Complex {
                         re: g[0] as f32,
                         im: 0.0,
                     },
@@ -443,7 +445,6 @@ impl MediaCapture {
                 .collect();
 
             let mut output: Vec<Complex<f32>> = vec![Zero::zero(); input.len()];
-
             let mut planner = FFTplanner::new(false);
             let fft = planner.plan_fft(input.len());
             fft.process(&mut input, &mut output);
@@ -652,16 +653,21 @@ pub struct Ffprobe {
 pub struct Args {
     pub end_delay_percent: f32,
     pub fast: bool,
-    pub grid: Option<Grid>,
+    pub grid: Grid,
     pub grid_horizontal_spacing: u32,
     pub grid_vertical_spacing: u32,
     pub input_path: String,
     pub interval: Option<Interval>,
     pub manual_timestamps: Option<Vec<String>>,
+    pub metadata_horizontal_margin: u32,
+    pub metadata_vertical_margin: u32,
     pub num_groups: u32,
     pub num_samples: Option<u32>,
     pub num_selected: u32,
     pub start_delay_percent: f32,
+    pub timestamp_position: TimestampPosition,
+    pub timestamp_horizontal_margin: u32,
+    pub timestamp_vertical_margin: u32,
     pub vcs_width: u32,
 }
 
@@ -676,17 +682,22 @@ impl Default for Args {
         Args {
             end_delay_percent: 7.0,
             fast: false,
-            grid: Some(DEFAULT_GRID_SPACING),
+            grid: DEFAULT_GRID_SPACING,
             grid_horizontal_spacing: DEFAULT_GRID_HORIZONTAL_SPACING,
             grid_vertical_spacing: DEFAULT_GRID_VERTICAL_SPACING,
             interval: None,
             input_path: "".to_string(),
             manual_timestamps: None,
+            metadata_horizontal_margin: DEFAULT_METADATA_HORIZONTAL_MARGIN,
+            metadata_vertical_margin: DEFAULT_METADATA_VERTICAL_MARGIN,
             // TODO: Change this to the right thing
-            num_groups: 5,
+            num_groups: 16,
             num_samples: Args::num_samples(DEFAULT_GRID_SPACING),
             num_selected: DEFAULT_GRID_SPACING.x * DEFAULT_GRID_SPACING.y,
             start_delay_percent: 7.0,
+            timestamp_position: TimestampPosition::SE,
+            timestamp_horizontal_margin: DEFAULT_TIMESTAMP_HORIZONTAL_MARGIN,
+            timestamp_vertical_margin: DEFAULT_TIMESTAMP_HORIZONTAL_MARGIN,
             vcs_width: DEFAULT_CONTACT_SHEET_WIDTH,
         }
     }
@@ -700,4 +711,16 @@ impl Interval {
     pub fn total_seconds(&self) -> f32 {
         1.0
     }
+}
+
+pub enum TimestampPosition {
+    North,
+    South,
+    East,
+    West,
+    NE,
+    NW,
+    SE,
+    SW,
+    Center,
 }

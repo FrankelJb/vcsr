@@ -14,6 +14,9 @@ pub fn clap_app() -> Args {
         )
         .get_matches();
     let input_path = matches.value_of("INPUT").unwrap().to_string();
-    let args: Args = Args { input_path: input_path, ..Default::default() };
+    let args: Args = Args {
+        input_path: input_path,
+        ..Default::default()
+    };
     args
 }
