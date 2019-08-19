@@ -2,7 +2,9 @@ use crate::constants::*;
 use crate::models::TimestampPosition;
 use crate::models::*;
 
-use image::{ Rgb };
+use conv::ValueInto;
+use image::{GenericImage, ImageBuffer, Pixel, Rgb, Rgba, RgbaImage};
+use imageproc::definitions::{Clamp, Image};
 use imageproc::drawing::draw_text_mut;
 use rand::distributions::Alphanumeric;
 use rand::{thread_rng, Rng};
@@ -60,13 +62,17 @@ pub fn timestamp_generator(media_info: &MediaInfo, args: &Args) -> Vec<(f32, Str
         .collect()
 }
 
-pub fn select_sharpest_images(media_info: &MediaInfo, media_capture: &MediaCapture, args: &Args) -> Vec<Frame> {
-    let desired_size =grid_desired_size(
-            &args.grid,
-            media_info,
-            Some(args.vcs_width),
-            Some(args.grid_horizontal_spacing)
-        );
+pub fn select_sharpest_images(
+    media_info: &MediaInfo,
+    media_capture: &MediaCapture,
+    args: &Args,
+) -> Vec<Frame> {
+    let desired_size = grid_desired_size(
+        &args.grid,
+        media_info,
+        Some(args.vcs_width),
+        Some(args.grid_horizontal_spacing),
+    );
 
     let timestamps = match &args.manual_timestamps {
         Some(timestamps) => timestamps
@@ -182,26 +188,30 @@ pub fn select_colour_variety(frames: &mut Vec<Frame>, num_selected: u32) -> Vec<
     selected_items
 }
 
-pub fn draw_metadata(
-    image: &str,
+pub fn draw_metadata<'a, I>(
+    image: &'a mut I,
+    header_font_colour: I::Pixel,
     args: &Args,
     header_line_height: u32,
-    header_lines: Vec<&str>,
-    header_font: &Font,
-    header_font_colour: Rgb<u8>,
+    header_lines: Vec<String>,
+    header_font: &'a Font,
     start_height: u32,
-) -> u32 {
+    scale: Scale,
+) -> u32
+where
+    I: GenericImage,
+    <I::Pixel as Pixel>::Subpixel: ValueInto<f32> + Clamp<f32>,
+{
     let mut h = start_height + args.metadata_vertical_margin;
-    let mut img = image::open(image).unwrap().to_rgb();
     for line in header_lines {
         draw_text_mut(
-            &mut img,
+            image,
             header_font_colour,
             args.metadata_horizontal_margin,
             h,
-            Scale { x: 1.0, y: 1.0 },
-            header_font,
-            line,
+            scale,
+            &header_font,
+            &line,
         );
         h += header_line_height;
     }
@@ -212,8 +222,8 @@ pub fn max_line_length(
     media_info_filename: String,
     metadata_font: Font,
     metadata_font_size: f32,
-    header_margin: usize,
-    width: usize,
+    header_margin: u32,
+    width: u32,
     text: Option<&str>,
 ) -> usize {
     let text = match text {
@@ -238,7 +248,7 @@ pub fn max_line_length(
             .map(|g| g.position().x as f32 + g.unpositioned().h_metrics().advance_width)
             .next()
             .unwrap_or(0.0)
-            .ceil() as usize;
+            .ceil() as u32;
 
         max_length = i;
         if text_width > max_width {
@@ -251,8 +261,8 @@ pub fn max_line_length(
 pub fn prepare_metadata_text_lines(
     media_info: &MediaInfo,
     header_font: Font,
-    header_margin: usize,
-    width: usize,
+    header_margin: u32,
+    width: u32,
 ) -> Vec<String> {
     // TODO: template maybe
     // TODO: font size needs to be set elsewhere
@@ -327,7 +337,11 @@ pub fn compute_timestamp_position(
     (upper_left, bottom_right)
 }
 
-pub fn load_font<'a>(_args: &'a Args, font_path: Option<&str>, default_font_path: &str) -> Font<'a> {
+pub fn load_font<'a>(
+    _args: &'a Args,
+    font_path: Option<&str>,
+    default_font_path: &str,
+) -> Font<'a> {
     // TODO: default font can be included in repo
     let fonts = font_path.unwrap_or(default_font_path);
     let font_path = Path::new(&fonts);
@@ -344,7 +358,87 @@ pub fn load_font<'a>(_args: &'a Args, font_path: Option<&str>, default_font_path
     }
 }
 
-pub fn compose_contact_sheet(media_info: MediaInfo, frames: Vec<Frame>, args: &Args) {
+pub fn compose_contact_sheet(media_info: MediaInfo, frames: &mut Vec<Frame>, args: &Args) {
+    let desired_size = grid_desired_size(
+        &args.grid,
+        &media_info,
+        Some(args.vcs_width),
+        Some(args.grid_horizontal_spacing),
+    );
+    let width = args.grid.x * (desired_size.x + args.grid_horizontal_spacing)
+        - args.grid_horizontal_spacing;
+    let height =
+        args.grid.y * (desired_size.y + args.grid_vertical_spacing) - args.grid_vertical_spacing;
 
-    let desired_size = grid_desired_size(&args.grid, &media_info, Some(args.vcs_width), Some(args.grid_horizontal_spacing));
+    let header_font = load_font(args, None, DEFAULT_METADATA_FONT);
+    let timestamp_font = load_font(args, None, DEFAULT_TIMESTAMP_FONT);
+
+    let header_lines = prepare_metadata_text_lines(
+        &media_info,
+        header_font,
+        args.metadata_horizontal_margin,
+        width,
+    );
+
+    let line_spacing_coefficient = 1.2;
+    let header_line_height = args.metadata_font_size * line_spacing_coefficient as u32;
+    let mut header_height =
+        2 * args.metadata_margin + header_lines.len() as u32 + header_line_height;
+
+    if args.metadata_position.is_none() {
+        header_height = 0;
+    }
+
+    let final_image_width = width;
+    let final_image_height = height + header_height;
+
+    let transparent = Rgba([255u8, 255u8, 255u8, 0u8]);
+
+    let image = RgbaImage::from_pixel(
+        final_image_width,
+        final_image_height,
+        decode_hex(args.background_colour),
+    );
+    let image_capture_layer =
+        RgbaImage::from_pixel(final_image_width, final_image_height, transparent);
+    let mut image_header_text_layer = image_capture_layer.clone();
+    let mut image_timestamp_layer = image_capture_layer.clone();
+    let mut image_timestamp_text_layer = image_capture_layer.clone();
+
+    let h = 0;
+    let draw_metadata_helper = |header_font: &Font| -> u32 {
+        draw_metadata(
+            &mut image_header_text_layer,
+            decode_hex(args.metadata_font_colour),
+            args,
+            header_line_height,
+            header_lines,
+            header_font,
+            h,
+            Scale { x: 16.0, y: 16.0 },
+        )
+    };
+
+    if let Some(MetadataPosition::Top) = args.metadata_position {
+        h = draw_metadata_helper(header_font);
+    }
+    let w = 0;
+    frames.sort_by(|a, b| a.timestamp.partial_cmp(&b.timestamp).unwrap());
+}
+
+pub fn decode_hex(s: &str) -> Rgba<u8> {
+    if s.len() % 2 != 0 {
+        panic!("cannot decode odd length colours");
+    } else {
+        let mut hex_vec: Vec<u8> = (0..s.len())
+            .step_by(2)
+            .map(|i| u8::from_str_radix(&s[i..i + 2], 16).unwrap())
+            .collect();
+        let mut array = [0u8; 4];
+        if hex_vec.len() == 3 {
+            hex_vec.push(255u8);
+        }
+        array.copy_from_slice(&hex_vec);
+        Rgba(array)
+    }
 }

@@ -1,6 +1,7 @@
 #![allow(dead_code)]
 
 extern crate clap;
+extern crate conv;
 extern crate env_logger;
 extern crate image;
 #[macro_use]
