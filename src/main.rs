@@ -41,13 +41,13 @@ fn main() {
     // info!("duration: {}", media_info.duration);
     media_info.parse_attributes();
     // info!("media_info: {:?}", media_info);
-    let _media_capture = models::MediaCapture::new(args.input_path.to_string(), None, None, None);
-    // media_capture.make_capture(
-    //     "00:02:45".to_string(),
-    //     media_info.display_width.unwrap() / 3,
-    //     media_info.display_height.unwrap() / 3,
-    //     None,
-    // );
+    let media_capture = models::MediaCapture::new(args.input_path.to_string(), None, None, None);
+    media_capture.make_capture(
+        "00:02:45".to_string(),
+        media_info.display_width.unwrap() / 3,
+        media_info.display_height.unwrap() / 3,
+        None,
+    );
     models::MediaCapture::compute_avg_colour("out.jpg");
 
     debug!(
@@ -63,7 +63,10 @@ fn main() {
     );
     info!(
         "{:?}",
-        operations::prepare_metadata_text_lines(&media_info, font, 10, 1499)
+        operations::prepare_metadata_text_lines(&media_info, &font, 10, 1499)
     );
-    // operations::select_sharpest_images(&media_info, &media_capture, &args);
+
+    let mut selected_frames =
+        operations::select_sharpest_images(&media_info, &media_capture, &args);
+    operations::compose_contact_sheet(media_info, &mut selected_frames, &args)
 }

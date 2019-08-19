@@ -108,7 +108,7 @@ pub fn select_sharpest_images(
             avg_colour = MediaCapture::compute_avg_colour(&full_path);
         }
         Frame {
-            filename: filename,
+            filename: full_path,
             blurriness: blurriness,
             timestamp: ts_tuple.0,
             avg_colour: avg_colour,
@@ -194,7 +194,7 @@ pub fn draw_metadata<'a, I>(
     args: &Args,
     header_line_height: u32,
     header_lines: Vec<String>,
-    header_font: &'a Font,
+    header_font: &Font,
     start_height: u32,
     scale: Scale,
 ) -> u32
@@ -204,6 +204,7 @@ where
 {
     let mut h = start_height + args.metadata_vertical_margin;
     for line in header_lines {
+        info!("line: {}", line);
         draw_text_mut(
             image,
             header_font_colour,
@@ -260,7 +261,7 @@ pub fn max_line_length(
 
 pub fn prepare_metadata_text_lines(
     media_info: &MediaInfo,
-    header_font: Font,
+    header_font: &Font,
     header_margin: u32,
     width: u32,
 ) -> Vec<String> {
@@ -375,7 +376,7 @@ pub fn compose_contact_sheet(media_info: MediaInfo, frames: &mut Vec<Frame>, arg
 
     let header_lines = prepare_metadata_text_lines(
         &media_info,
-        header_font,
+        &header_font,
         args.metadata_horizontal_margin,
         width,
     );
@@ -399,13 +400,13 @@ pub fn compose_contact_sheet(media_info: MediaInfo, frames: &mut Vec<Frame>, arg
         final_image_height,
         decode_hex(args.background_colour),
     );
-    let image_capture_layer =
+    let mut image_capture_layer =
         RgbaImage::from_pixel(final_image_width, final_image_height, transparent);
     let mut image_header_text_layer = image_capture_layer.clone();
     let mut image_timestamp_layer = image_capture_layer.clone();
     let mut image_timestamp_text_layer = image_capture_layer.clone();
 
-    let h = 0;
+    let mut h = 0;
     let draw_metadata_helper = |header_font: &Font| -> u32 {
         draw_metadata(
             &mut image_header_text_layer,
@@ -420,10 +421,20 @@ pub fn compose_contact_sheet(media_info: MediaInfo, frames: &mut Vec<Frame>, arg
     };
 
     if let Some(MetadataPosition::Top) = args.metadata_position {
-        h = draw_metadata_helper(header_font);
+        h = draw_metadata_helper(&header_font);
     }
+
     let w = 0;
     frames.sort_by(|a, b| a.timestamp.partial_cmp(&b.timestamp).unwrap());
+    for (i, frame) in frames.iter().enumerate() {
+        info!("filename: {}", frame.filename);
+        let mut f = image::open(&Path::new(&frame.filename)).unwrap().to_rgba();
+        putalpha(args.capture_alpha, &mut f);
+        image::imageops::overlay(&mut image_capture_layer, &mut f, w, h);
+    }
+    image_header_text_layer
+        .save("image_header_text_layer.jpg")
+        .unwrap();
 }
 
 pub fn decode_hex(s: &str) -> Rgba<u8> {
@@ -440,5 +451,15 @@ pub fn decode_hex(s: &str) -> Rgba<u8> {
         }
         array.copy_from_slice(&hex_vec);
         Rgba(array)
+    }
+}
+
+fn putalpha(alpha: u8, image: &mut RgbaImage) {
+    for (_, _, pixel) in image.enumerate_pixels_mut() {
+        match pixel {
+            image::Rgba { data: rgba } => {
+                (*pixel = image::Rgba([rgba[0], rgba[1], rgba[2], alpha]))
+            }
+        }
     }
 }

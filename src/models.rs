@@ -413,10 +413,10 @@ impl MediaCapture {
                 image
                     .enumerate_pixels()
                     .fold((0.0, 0.0, 0.0), |acc, (_, _, p)| match p {
-                        image::Rgba { data: rgb } => (
-                            acc.0 + rgb[0] as f32,
-                            acc.1 + rgb[1] as f32,
-                            acc.2 + rgb[2] as f32,
+                        image::Rgba { data: rgba } => (
+                            acc.0 + rgba[0] as f32,
+                            acc.1 + rgba[1] as f32,
+                            acc.2 + rgba[2] as f32,
                         ),
                     });
             let size = image.width() as f32 * image.height() as f32;
@@ -652,6 +652,7 @@ pub struct Ffprobe {
 
 pub struct Args {
     pub background_colour: &'static str,
+    pub capture_alpha: u8,
     pub end_delay_percent: f32,
     pub fast: bool,
     pub grid: Grid,
@@ -686,6 +687,7 @@ impl Default for Args {
     fn default() -> Self {
         Args {
             background_colour: DEFAULT_BACKGROUND_COLOUR,
+            capture_alpha: DEFAULT_CAPTURE_ALPHA,
             end_delay_percent: 7.0,
             fast: false,
             grid: DEFAULT_GRID_SPACING,
@@ -698,7 +700,7 @@ impl Default for Args {
             metadata_font_size: DEFAULT_METADATA_FONT_SIZE,
             metadata_horizontal_margin: DEFAULT_METADATA_HORIZONTAL_MARGIN,
             metadata_margin: DEFAULT_METADATA_MARGIN,
-            metadata_position: None,
+            metadata_position: Some(MetadataPosition::Top),
             metadata_vertical_margin: DEFAULT_METADATA_VERTICAL_MARGIN,
             // TODO: Change this to the right thing
             num_groups: 16,
