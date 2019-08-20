@@ -5,7 +5,8 @@ use crate::models::*;
 use conv::ValueInto;
 use image::{GenericImage, Pixel, Rgba, RgbaImage};
 use imageproc::definitions::Clamp;
-use imageproc::drawing::draw_text_mut;
+use imageproc::drawing::{draw_hollow_rect_mut, draw_text_mut};
+use imageproc::rect::Rect;
 use rand::distributions::Alphanumeric;
 use rand::{thread_rng, Rng};
 use rayon::prelude::*;
@@ -329,12 +330,12 @@ pub fn compute_timestamp_position(
     };
 
     let upper_left = point(w + x_offset, h + y_offset);
-    let bottom_right = point(
-        upper_left.x + text_size.0 + 2 * rectangle_hpadding,
-        upper_left.y + text_size.1 + 2 * rectangle_vpadding,
+    let size = point(
+        text_size.0 + 2 * rectangle_hpadding,
+        text_size.1 + 2 * rectangle_vpadding,
     );
 
-    (upper_left, bottom_right)
+    (upper_left, size)
 }
 
 pub fn load_font<'a>(
@@ -372,6 +373,8 @@ pub fn compose_contact_sheet(media_info: MediaInfo, frames: &mut Vec<Frame>, arg
 
     let header_font = load_font(args, None, DEFAULT_METADATA_FONT);
     let timestamp_font = load_font(args, None, DEFAULT_TIMESTAMP_FONT);
+    let timestamp_font_scale = Scale::uniform(args.timestamp_font_size);
+    let timestamp_border_colour = decode_hex(args.timestamp_border_colour);
 
     let header_lines = prepare_metadata_text_lines(
         &media_info,
@@ -398,8 +401,8 @@ pub fn compose_contact_sheet(media_info: MediaInfo, frames: &mut Vec<Frame>, arg
     let mut image_capture_layer =
         RgbaImage::from_pixel(final_image_width, final_image_height, hex_background);
     let mut image_header_text_layer = image_capture_layer.clone();
-    let mut _image_timestamp_layer = image_capture_layer.clone();
-    let mut _image_timestamp_text_layer = image_capture_layer.clone();
+    let mut image_timestamp_layer = image_capture_layer.clone();
+    let mut image_timestamp_text_layer = image_capture_layer.clone();
 
     let mut h = 0;
     let draw_metadata_helper = |header_font: &Font| -> u32 {
@@ -443,7 +446,7 @@ pub fn compose_contact_sheet(media_info: MediaInfo, frames: &mut Vec<Frame>, arg
             let rectangle_hpadding = args.timestamp_horizontal_margin;
             let rectangle_vpadding = args.timestamp_vertical_margin;
 
-            let (upper_left, bottom_right) = compute_timestamp_position(
+            let (upper_left, size) = compute_timestamp_position(
                 args,
                 w,
                 h,
@@ -451,6 +454,55 @@ pub fn compose_contact_sheet(media_info: MediaInfo, frames: &mut Vec<Frame>, arg
                 &desired_size,
                 rectangle_hpadding,
                 rectangle_vpadding,
+            );
+
+            if !args.timestamp_border_mode {
+                let timestamp_border_colour = decode_hex(args.timestamp_border_colour);
+                draw_hollow_rect_mut(
+                    &mut image_timestamp_text_layer,
+                    Rect::at(upper_left.x as i32, upper_left.y as i32).of_size(size.x, size.y),
+                    timestamp_border_colour,
+                );
+            } else {
+                let offset_factor = args.timestamp_border_size;
+                let offsets: Vec<(i32, i32)> = vec![
+                    (1, 0),
+                    (-1, 0),
+                    (0, 1),
+                    (0, -1),
+                    (1, 1),
+                    (1, -1),
+                    (-1, 1),
+                    (-1, -1),
+                ];
+                let mut final_offsets: Vec<(i32, i32)> = vec![];
+                for offset_counter in 1..offset_factor + 1 {
+                    for x in &offsets {
+                        final_offsets
+                            .push((x.0 * offset_counter as i32, x.1 * offset_counter as i32));
+                    }
+                }
+                for offset in final_offsets {
+                    draw_text_mut(
+                        &mut image_timestamp_text_layer,
+                        timestamp_border_colour,
+                        (upper_left.x as i32 + rectangle_hpadding as i32 + offset.0) as u32,
+                        (upper_left.y as i32 + rectangle_vpadding as i32 + offset.1) as u32,
+                        timestamp_font_scale,
+                        &timestamp_font,
+                        &timestamp_text,
+                    );
+                }
+            }
+            let timestamp_font_colour = decode_hex(args.timestamp_font_colour);
+            draw_text_mut(
+                &mut image_timestamp_text_layer,
+                timestamp_font_colour,
+                upper_left.x + rectangle_hpadding,
+                upper_left.y + rectangle_vpadding,
+                timestamp_font_scale,
+                &timestamp_font,
+                &timestamp_text,
             );
         };
 
@@ -467,6 +519,9 @@ pub fn compose_contact_sheet(media_info: MediaInfo, frames: &mut Vec<Frame>, arg
             w = 0;
         }
     }
+    image_capture_layer.enumerate_pixels_mut().for_each(|(x, y, p)| {
+        p.blend(image_timestamp_text_layer.get_pixel(x, y));
+    });
     image_capture_layer.save("image_capture_layer.jpg").unwrap();
 }
 
@@ -480,7 +535,7 @@ pub fn decode_hex(s: &str) -> Rgba<u8> {
             .collect();
         let mut array = [0u8; 4];
         if hex_vec.len() == 3 {
-            hex_vec.push(255u8);
+            hex_vec.push(125u8);
         }
         array.copy_from_slice(&hex_vec);
         Rgba(array)

@@ -56,11 +56,7 @@ fn main() {
     );
 
     info!("{:?}", operations::timestamp_generator(&media_info, &args));
-    let font = operations::load_font(
-        &args,
-        None,
-        constants::DEFAULT_TIMESTAMP_FONT
-    );
+    let font = operations::load_font(&args, None, constants::DEFAULT_TIMESTAMP_FONT);
     info!(
         "{:?}",
         operations::prepare_metadata_text_lines(&media_info, &font, 10, 1499)
