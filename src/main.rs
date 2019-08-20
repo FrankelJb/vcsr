@@ -59,7 +59,7 @@ fn main() {
     let font = operations::load_font(
         &args,
         None,
-        "/home/beans/projects/rust/imageproc/font/src/DejaVuSans.ttf",
+        constants::DEFAULT_TIMESTAMP_FONT
     );
     info!(
         "{:?}",

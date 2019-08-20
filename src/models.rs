@@ -662,7 +662,7 @@ pub struct Args {
     pub interval: Option<Interval>,
     pub manual_timestamps: Option<Vec<String>>,
     pub metadata_font_colour: &'static str,
-    pub metadata_font_size: u32,
+    pub metadata_font_size: f32,
     pub metadata_horizontal_margin: u32,
     pub metadata_margin: u32,
     pub metadata_position: Option<MetadataPosition>,
@@ -671,9 +671,13 @@ pub struct Args {
     pub num_samples: Option<u32>,
     pub num_selected: u32,
     pub start_delay_percent: f32,
+    pub show_timestamp: bool,
+    pub timestamp_font_size: f32,
     pub timestamp_position: TimestampPosition,
     pub timestamp_horizontal_margin: u32,
+    pub timestamp_horizontal_padding: u32,
     pub timestamp_vertical_margin: u32,
+    pub timestamp_vertical_padding: u32,
     pub vcs_width: u32,
 }
 
@@ -707,9 +711,13 @@ impl Default for Args {
             num_samples: Args::num_samples(DEFAULT_GRID_SPACING),
             num_selected: DEFAULT_GRID_SPACING.x * DEFAULT_GRID_SPACING.y,
             start_delay_percent: 7.0,
+            show_timestamp: true,
+            timestamp_font_size: DEFAULT_TIMESTAMP_FONT_SIZE,
             timestamp_position: TimestampPosition::SE,
             timestamp_horizontal_margin: DEFAULT_TIMESTAMP_HORIZONTAL_MARGIN,
+            timestamp_horizontal_padding: DEFAULT_TIMESTAMP_HORIZONTAL_PADDING,
             timestamp_vertical_margin: DEFAULT_TIMESTAMP_HORIZONTAL_MARGIN,
+            timestamp_vertical_padding: DEFAULT_TIMESTAMP_VERTICAL_PADDING,
             vcs_width: DEFAULT_CONTACT_SHEET_WIDTH,
         }
     }

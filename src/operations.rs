@@ -3,8 +3,8 @@ use crate::models::TimestampPosition;
 use crate::models::*;
 
 use conv::ValueInto;
-use image::{GenericImage, ImageBuffer, Pixel, Rgb, Rgba, RgbaImage};
-use imageproc::definitions::{Clamp, Image};
+use image::{GenericImage, Pixel, Rgba, RgbaImage};
+use imageproc::definitions::Clamp;
 use imageproc::drawing::draw_text_mut;
 use rand::distributions::Alphanumeric;
 use rand::{thread_rng, Rng};
@@ -204,7 +204,6 @@ where
 {
     let mut h = start_height + args.metadata_vertical_margin;
     for line in header_lines {
-        info!("line: {}", line);
         draw_text_mut(
             image,
             header_font_colour,
@@ -303,7 +302,7 @@ pub fn compute_timestamp_position(
     w: u32,
     h: u32,
     text_size: (u32, u32),
-    desired_size: (u32, u32),
+    desired_size: &Grid,
     rectangle_hpadding: u32,
     rectangle_vpadding: u32,
 ) -> (Point<u32>, Point<u32>) {
@@ -312,10 +311,10 @@ pub fn compute_timestamp_position(
             args.timestamp_horizontal_margin
         }
         TimestampPosition::North | TimestampPosition::Center | TimestampPosition::South => {
-            (desired_size.0 / 2) - (text_size.0 / 2) - rectangle_hpadding
+            (desired_size.x / 2) - (text_size.0 / 2) - rectangle_hpadding
         }
         _ => {
-            desired_size.0 - text_size.0 - args.timestamp_horizontal_margin - 2 * rectangle_hpadding
+            desired_size.x - text_size.0 - args.timestamp_horizontal_margin - 2 * rectangle_hpadding
         }
     };
 
@@ -324,9 +323,9 @@ pub fn compute_timestamp_position(
             args.timestamp_vertical_margin
         }
         TimestampPosition::West | TimestampPosition::Center | TimestampPosition::East => {
-            (desired_size.1 / 2) - (text_size.1 / 2) - rectangle_vpadding
+            (desired_size.y / 2) - (text_size.1 / 2) - rectangle_vpadding
         }
-        _ => desired_size.1 - text_size.1 - args.timestamp_vertical_margin - 2 * rectangle_vpadding,
+        _ => desired_size.y - text_size.1 - args.timestamp_vertical_margin - 2 * rectangle_vpadding,
     };
 
     let upper_left = point(w + x_offset, h + y_offset);
@@ -382,7 +381,7 @@ pub fn compose_contact_sheet(media_info: MediaInfo, frames: &mut Vec<Frame>, arg
     );
 
     let line_spacing_coefficient = 1.2;
-    let header_line_height = args.metadata_font_size * line_spacing_coefficient as u32;
+    let header_line_height = (args.metadata_font_size * line_spacing_coefficient) as u32;
     let mut header_height =
         2 * args.metadata_margin + header_lines.len() as u32 + header_line_height;
 
@@ -394,17 +393,13 @@ pub fn compose_contact_sheet(media_info: MediaInfo, frames: &mut Vec<Frame>, arg
     let final_image_height = height + header_height;
 
     let transparent = Rgba([255u8, 255u8, 255u8, 0u8]);
-
-    let image = RgbaImage::from_pixel(
-        final_image_width,
-        final_image_height,
-        decode_hex(args.background_colour),
-    );
+    let hex_background = decode_hex(args.background_colour);
+    let _image = RgbaImage::from_pixel(final_image_width, final_image_height, hex_background);
     let mut image_capture_layer =
-        RgbaImage::from_pixel(final_image_width, final_image_height, transparent);
+        RgbaImage::from_pixel(final_image_width, final_image_height, hex_background);
     let mut image_header_text_layer = image_capture_layer.clone();
-    let mut image_timestamp_layer = image_capture_layer.clone();
-    let mut image_timestamp_text_layer = image_capture_layer.clone();
+    let mut _image_timestamp_layer = image_capture_layer.clone();
+    let mut _image_timestamp_text_layer = image_capture_layer.clone();
 
     let mut h = 0;
     let draw_metadata_helper = |header_font: &Font| -> u32 {
@@ -424,17 +419,55 @@ pub fn compose_contact_sheet(media_info: MediaInfo, frames: &mut Vec<Frame>, arg
         h = draw_metadata_helper(&header_font);
     }
 
-    let w = 0;
+    let mut w = 0;
     frames.sort_by(|a, b| a.timestamp.partial_cmp(&b.timestamp).unwrap());
     for (i, frame) in frames.iter().enumerate() {
-        info!("filename: {}", frame.filename);
         let mut f = image::open(&Path::new(&frame.filename)).unwrap().to_rgba();
-        putalpha(args.capture_alpha, &mut f);
-        image::imageops::overlay(&mut image_capture_layer, &mut f, w, h);
+        putalpha(&mut f, args.capture_alpha);
+        image::imageops::replace(&mut image_capture_layer, &mut f, w, h);
+
+        if args.show_timestamp {
+            let timestamp_time = MediaInfo::pretty_duration(frame.timestamp, true, false);
+            let timestamp_duration =
+                MediaInfo::pretty_duration(media_info.duration_seconds, true, true);
+            let parsed_time = MediaInfo::parse_duration(frame.timestamp);
+            let parsed_duraton = MediaInfo::parse_duration(media_info.duration_seconds);
+
+            // TODO: Handlebar
+            let timestamp_text = format!("{time}", time = timestamp_time);
+            let text_size = get_text_size(
+                &timestamp_font,
+                Scale::uniform(args.timestamp_font_size),
+                &timestamp_text,
+            );
+            let rectangle_hpadding = args.timestamp_horizontal_margin;
+            let rectangle_vpadding = args.timestamp_vertical_margin;
+
+            let (upper_left, bottom_right) = compute_timestamp_position(
+                args,
+                w,
+                h,
+                text_size,
+                &desired_size,
+                rectangle_hpadding,
+                rectangle_vpadding,
+            );
+        };
+
+        // update x position for next frame
+        w += desired_size.x + args.grid_horizontal_spacing;
+
+        // update y position
+        if (i as u32 + 1) % args.grid.x == 0 {
+            h += desired_size.y + args.grid_vertical_spacing;
+        }
+
+        // update x position
+        if (i as u32 + 1) % args.grid.x == 0 {
+            w = 0;
+        }
     }
-    image_header_text_layer
-        .save("image_header_text_layer.jpg")
-        .unwrap();
+    image_capture_layer.save("image_capture_layer.jpg").unwrap();
 }
 
 pub fn decode_hex(s: &str) -> Rgba<u8> {
@@ -454,7 +487,7 @@ pub fn decode_hex(s: &str) -> Rgba<u8> {
     }
 }
 
-fn putalpha(alpha: u8, image: &mut RgbaImage) {
+fn putalpha(image: &mut RgbaImage, alpha: u8) {
     for (_, _, pixel) in image.enumerate_pixels_mut() {
         match pixel {
             image::Rgba { data: rgba } => {
@@ -462,4 +495,24 @@ fn putalpha(alpha: u8, image: &mut RgbaImage) {
             }
         }
     }
+}
+
+fn get_text_size(font: &Font, scale: Scale, text: &str) -> (u32, u32) {
+    let v_metrics = font.v_metrics(scale);
+
+    let glyphs: Vec<_> = font.layout(text, scale, Point { x: 0.0, y: 0.0 }).collect();
+
+    let glyphs_height = (v_metrics.ascent - v_metrics.descent).ceil() as u32;
+    let glyphs_width = {
+        let min_x = glyphs
+            .first()
+            .map(|g| g.pixel_bounding_box().unwrap().min.x)
+            .unwrap();
+        let max_x = glyphs
+            .last()
+            .map(|g| g.pixel_bounding_box().unwrap().max.x)
+            .unwrap();
+        (max_x - min_x) as u32
+    };
+    (glyphs_width, glyphs_height)
 }
