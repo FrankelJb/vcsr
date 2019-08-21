@@ -1,11 +1,11 @@
 use crate::constants::*;
-use crate::errors;
+use crate::errors::{CustomError};
 use image;
 use serde::{Deserialize, Serialize};
 use std::io;
 use std::path::Path;
 use std::process::{Command, Stdio};
-use std::{fmt, str::FromStr};
+use std::{fmt, str, str::FromStr};
 
 use rustfft::{num_complex::Complex, num_traits::Zero, FFTplanner};
 
@@ -21,23 +21,20 @@ impl fmt::Display for Grid {
     }
 }
 
-#[derive(Debug)]
-enum VcsiError {
-    ParseError(String),
-    ParseIntError(String),
-}
-
 impl FromStr for Grid {
+    type Err = CustomError;
 
-    fn from_str(s: &str) -> Result<Self, VcsiError> {
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
         let mxn: Vec<&str> = s.split("x").collect();
         if mxn.len() > 2 {
-            VcsiError::ParseError("Grid must be of the form mxn, where m is the number of columns and n is the number of rows.".to_string())
-        }
-        else {
+            Err(CustomError::GridShape)
+        } else {
             let y_fromstr = mxn[1].parse::<u32>()?;
             let x_fromstr = mxn[0].parse::<u32>()?;
-            Ok(Grid { x: x_fromstr, y: y_fromstr })
+            Ok(Grid {
+                x: x_fromstr,
+                y: y_fromstr,
+            })
         }
     }
 }
@@ -670,6 +667,23 @@ pub struct Ffprobe {
     pub format: Format,
 }
 
+pub struct Interval {
+    pub interval: String,
+}
+
+impl Interval {
+    pub fn total_seconds(&self) -> f32 {
+        1.0
+    }
+}
+
+#[derive(Debug, StructOpt)]
+pub enum MetadataPosition {
+    Top,
+    Bottom,
+}
+
+
 #[derive(Debug, StructOpt)]
 pub enum TimestampPosition {
     North,
@@ -681,12 +695,4 @@ pub enum TimestampPosition {
     SE,
     SW,
     Center,
-}
-
-#[derive(Debug, StructOpt)]
-pub enum MetadataPosition {
-    #[structopt(name = "top")]
-    Top,
-    #[structopt(name = "bottom")]
-    Bottom,
 }

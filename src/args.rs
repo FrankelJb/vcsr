@@ -1,24 +1,22 @@
-use crate::models::{Grid, MetadataPosition, TimestampPosition};
 use crate::constants::*;
-use structopt::StructOpt;
+use crate::models::{Grid, Interval, MetadataPosition, TimestampPosition};
 
 pub fn application_args() -> Args {
     Args::default()
 }
 
-#[derive(Debug, StructOpt)]
 pub struct Args {
-    pub background_colour: String,
+    pub background_colour: &'static str,
     pub capture_alpha: u8,
     pub end_delay_percent: f32,
     pub fast: bool,
     pub grid: Grid,
     pub grid_horizontal_spacing: u32,
     pub grid_vertical_spacing: u32,
-    pub input_path: String,
-    pub interval: Option<String>,
+    pub input_path: &'static str,
+    pub interval: Option<Interval>,
     pub manual_timestamps: Option<Vec<String>>,
-    pub metadata_font_colour: String,
+    pub metadata_font_colour: &'static str,
     pub metadata_font_size: f32,
     pub metadata_horizontal_margin: u32,
     pub metadata_margin: u32,
@@ -29,11 +27,11 @@ pub struct Args {
     pub num_selected: u32,
     pub start_delay_percent: f32,
     pub show_timestamp: bool,
-    pub timestamp_background_colour: String,
-    pub timestamp_border_colour: String,
+    pub timestamp_background_colour: &'static str,
+    pub timestamp_border_colour: &'static str,
     pub timestamp_border_mode: bool,
     pub timestamp_border_size: u32,
-    pub timestamp_font_colour: String,
+    pub timestamp_font_colour: &'static str,
     pub timestamp_font_size: f32,
     pub timestamp_position: TimestampPosition,
     pub timestamp_horizontal_margin: u32,
@@ -60,7 +58,7 @@ impl Default for Args {
             grid_horizontal_spacing: DEFAULT_GRID_HORIZONTAL_SPACING,
             grid_vertical_spacing: DEFAULT_GRID_VERTICAL_SPACING,
             interval: None,
-            input_path: "".to_string(),
+            input_path: "",
             manual_timestamps: None,
             metadata_font_colour: DEFAULT_METADATA_FONT_COLOUR,
             metadata_font_size: DEFAULT_METADATA_FONT_SIZE,
@@ -89,4 +87,3 @@ impl Default for Args {
         }
     }
 }
-

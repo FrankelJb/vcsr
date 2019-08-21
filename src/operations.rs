@@ -496,8 +496,6 @@ fn save_image(image: ImageBuffer<Rgba<u8>, Vec<u8>>, output_path: &str) -> std::
     Ok(())
 }
 
-
-
 fn decode_hex(s: &str) -> Rgba<u8> {
     if s.len() % 2 != 0 {
         panic!("cannot decode odd length colours");

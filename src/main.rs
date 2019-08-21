@@ -1,6 +1,5 @@
 #![allow(dead_code)]
 
-extern crate conv;
 extern crate env_logger;
 extern crate image;
 #[macro_use]
@@ -30,7 +29,7 @@ fn main() {
     env::set_var("RUST_LOG", "vcsi=debug,info");
     env_logger::init();
 
-    let args = args::clap_app();
+    let args = args::application_args();
 
     // TODO: Handle results to main
     let ffprobe = models::MediaInfo::probe_media(&Path::new(&args.input_path)).unwrap();
