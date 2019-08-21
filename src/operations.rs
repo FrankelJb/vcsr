@@ -1,11 +1,10 @@
+use crate::args::Args;
 use crate::constants::*;
 use crate::models::TimestampPosition;
 use crate::models::*;
 
-use conv::ValueInto;
-use image::{GenericImage, Pixel, Rgba, RgbaImage};
-use imageproc::definitions::Clamp;
-use imageproc::drawing::{draw_hollow_rect_mut, draw_text_mut};
+use image::{ImageBuffer, ImageRgba8, Rgba, RgbaImage};
+use imageproc::drawing::{draw_filled_rect_mut, draw_text_mut};
 use imageproc::rect::Rect;
 use rand::distributions::Alphanumeric;
 use rand::{thread_rng, Rng};
@@ -189,36 +188,6 @@ pub fn select_colour_variety(frames: &mut Vec<Frame>, num_selected: u32) -> Vec<
     selected_items
 }
 
-pub fn draw_metadata<'a, I>(
-    image: &'a mut I,
-    header_font_colour: I::Pixel,
-    args: &Args,
-    header_line_height: u32,
-    header_lines: Vec<String>,
-    header_font: &Font,
-    start_height: u32,
-    scale: Scale,
-) -> u32
-where
-    I: GenericImage,
-    <I::Pixel as Pixel>::Subpixel: ValueInto<f32> + Clamp<f32>,
-{
-    let mut h = start_height + args.metadata_vertical_margin;
-    for line in header_lines {
-        draw_text_mut(
-            image,
-            header_font_colour,
-            args.metadata_horizontal_margin,
-            h,
-            scale,
-            &header_font,
-            &line,
-        );
-        h += header_line_height;
-    }
-    h
-}
-
 pub fn max_line_length(
     media_info_filename: String,
     metadata_font: Font,
@@ -359,7 +328,11 @@ pub fn load_font<'a>(
     }
 }
 
-pub fn compose_contact_sheet(media_info: MediaInfo, frames: &mut Vec<Frame>, args: &Args) {
+pub fn compose_contact_sheet(
+    media_info: MediaInfo,
+    frames: &mut Vec<Frame>,
+    args: &Args,
+) -> ImageBuffer<Rgba<u8>, Vec<u8>> {
     let desired_size = grid_desired_size(
         &args.grid,
         &media_info,
@@ -371,10 +344,10 @@ pub fn compose_contact_sheet(media_info: MediaInfo, frames: &mut Vec<Frame>, arg
     let height =
         args.grid.y * (desired_size.y + args.grid_vertical_spacing) - args.grid_vertical_spacing;
 
-    let header_font = load_font(args, None, DEFAULT_METADATA_FONT);
-    let timestamp_font = load_font(args, None, DEFAULT_TIMESTAMP_FONT);
+    let header_font = load_font(args, None, &DEFAULT_METADATA_FONT);
+    let timestamp_font = load_font(args, None, &DEFAULT_TIMESTAMP_FONT);
     let timestamp_font_scale = Scale::uniform(args.timestamp_font_size);
-    let timestamp_border_colour = decode_hex(args.timestamp_border_colour);
+    let timestamp_border_colour = decode_hex(&args.timestamp_border_colour);
 
     let header_lines = prepare_metadata_text_lines(
         &media_info,
@@ -395,31 +368,25 @@ pub fn compose_contact_sheet(media_info: MediaInfo, frames: &mut Vec<Frame>, arg
     let final_image_width = width;
     let final_image_height = height + header_height;
 
-    let transparent = Rgba([255u8, 255u8, 255u8, 0u8]);
-    let hex_background = decode_hex(args.background_colour);
-    let _image = RgbaImage::from_pixel(final_image_width, final_image_height, hex_background);
-    let mut image_capture_layer =
-        RgbaImage::from_pixel(final_image_width, final_image_height, hex_background);
-    let mut image_header_text_layer = image_capture_layer.clone();
-    let mut image_timestamp_layer = image_capture_layer.clone();
-    let mut image_timestamp_text_layer = image_capture_layer.clone();
+    let hex_background = decode_hex(&args.background_colour);
+    let mut image = RgbaImage::from_pixel(final_image_width, final_image_height, hex_background);
 
     let mut h = 0;
-    let draw_metadata_helper = |header_font: &Font| -> u32 {
-        draw_metadata(
-            &mut image_header_text_layer,
-            decode_hex(args.metadata_font_colour),
-            args,
-            header_line_height,
-            header_lines,
-            header_font,
-            h,
-            Scale { x: 16.0, y: 16.0 },
-        )
-    };
 
     if let Some(MetadataPosition::Top) = args.metadata_position {
-        h = draw_metadata_helper(&header_font);
+        h = args.metadata_vertical_margin;
+        for line in header_lines {
+            draw_text_mut(
+                &mut image,
+                decode_hex(&args.metadata_font_colour),
+                args.metadata_horizontal_margin,
+                h,
+                Scale { x: 16.0, y: 16.0 },
+                &header_font,
+                &line,
+            );
+            h += header_line_height;
+        }
     }
 
     let mut w = 0;
@@ -427,14 +394,14 @@ pub fn compose_contact_sheet(media_info: MediaInfo, frames: &mut Vec<Frame>, arg
     for (i, frame) in frames.iter().enumerate() {
         let mut f = image::open(&Path::new(&frame.filename)).unwrap().to_rgba();
         putalpha(&mut f, args.capture_alpha);
-        image::imageops::replace(&mut image_capture_layer, &mut f, w, h);
+        image::imageops::replace(&mut image, &mut f, w, h);
 
         if args.show_timestamp {
             let timestamp_time = MediaInfo::pretty_duration(frame.timestamp, true, false);
-            let timestamp_duration =
+            let _timestamp_duration =
                 MediaInfo::pretty_duration(media_info.duration_seconds, true, true);
-            let parsed_time = MediaInfo::parse_duration(frame.timestamp);
-            let parsed_duraton = MediaInfo::parse_duration(media_info.duration_seconds);
+            let _parsed_time = MediaInfo::parse_duration(frame.timestamp);
+            let _parsed_duraton = MediaInfo::parse_duration(media_info.duration_seconds);
 
             // TODO: Handlebar
             let timestamp_text = format!("{time}", time = timestamp_time);
@@ -457,9 +424,9 @@ pub fn compose_contact_sheet(media_info: MediaInfo, frames: &mut Vec<Frame>, arg
             );
 
             if !args.timestamp_border_mode {
-                let timestamp_border_colour = decode_hex(args.timestamp_border_colour);
-                draw_hollow_rect_mut(
-                    &mut image_timestamp_text_layer,
+                let timestamp_border_colour = decode_hex(&args.timestamp_border_colour);
+                draw_filled_rect_mut(
+                    &mut image,
                     Rect::at(upper_left.x as i32, upper_left.y as i32).of_size(size.x, size.y),
                     timestamp_border_colour,
                 );
@@ -484,7 +451,7 @@ pub fn compose_contact_sheet(media_info: MediaInfo, frames: &mut Vec<Frame>, arg
                 }
                 for offset in final_offsets {
                     draw_text_mut(
-                        &mut image_timestamp_text_layer,
+                        &mut image,
                         timestamp_border_colour,
                         (upper_left.x as i32 + rectangle_hpadding as i32 + offset.0) as u32,
                         (upper_left.y as i32 + rectangle_vpadding as i32 + offset.1) as u32,
@@ -494,9 +461,9 @@ pub fn compose_contact_sheet(media_info: MediaInfo, frames: &mut Vec<Frame>, arg
                     );
                 }
             }
-            let timestamp_font_colour = decode_hex(args.timestamp_font_colour);
+            let timestamp_font_colour = decode_hex(&args.timestamp_font_colour);
             draw_text_mut(
-                &mut image_timestamp_text_layer,
+                &mut image,
                 timestamp_font_colour,
                 upper_left.x + rectangle_hpadding,
                 upper_left.y + rectangle_vpadding,
@@ -519,13 +486,19 @@ pub fn compose_contact_sheet(media_info: MediaInfo, frames: &mut Vec<Frame>, arg
             w = 0;
         }
     }
-    image_capture_layer.enumerate_pixels_mut().for_each(|(x, y, p)| {
-        p.blend(image_timestamp_text_layer.get_pixel(x, y));
-    });
-    image_capture_layer.save("image_capture_layer.jpg").unwrap();
+
+    image
 }
 
-pub fn decode_hex(s: &str) -> Rgba<u8> {
+fn save_image(image: ImageBuffer<Rgba<u8>, Vec<u8>>, output_path: &str) -> std::io::Result<()> {
+    ImageRgba8(image).to_rgb().save(output_path)?;
+    // image.save(output_path)?;
+    Ok(())
+}
+
+
+
+fn decode_hex(s: &str) -> Rgba<u8> {
     if s.len() % 2 != 0 {
         panic!("cannot decode odd length colours");
     } else {
@@ -535,7 +508,7 @@ pub fn decode_hex(s: &str) -> Rgba<u8> {
             .collect();
         let mut array = [0u8; 4];
         if hex_vec.len() == 3 {
-            hex_vec.push(125u8);
+            hex_vec.push(255u8);
         }
         array.copy_from_slice(&hex_vec);
         Rgba(array)

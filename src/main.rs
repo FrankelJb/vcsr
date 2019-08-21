@@ -1,6 +1,5 @@
 #![allow(dead_code)]
 
-extern crate clap;
 extern crate conv;
 extern crate env_logger;
 extern crate image;
@@ -11,10 +10,13 @@ extern crate rand;
 extern crate rayon;
 extern crate serde;
 extern crate serde_json;
+#[macro_use]
+extern crate structopt;
 extern crate textwrap;
 
 mod args;
 mod constants;
+mod errors;
 mod models;
 mod operations;
 
@@ -56,7 +58,7 @@ fn main() {
     );
 
     info!("{:?}", operations::timestamp_generator(&media_info, &args));
-    let font = operations::load_font(&args, None, constants::DEFAULT_TIMESTAMP_FONT);
+    let font = operations::load_font(&args, None, &constants::DEFAULT_TIMESTAMP_FONT);
     info!(
         "{:?}",
         operations::prepare_metadata_text_lines(&media_info, &font, 10, 1499)
@@ -64,5 +66,5 @@ fn main() {
 
     let mut selected_frames =
         operations::select_sharpest_images(&media_info, &media_capture, &args);
-    operations::compose_contact_sheet(media_info, &mut selected_frames, &args)
+    operations::compose_contact_sheet(media_info, &mut selected_frames, &args);
 }
