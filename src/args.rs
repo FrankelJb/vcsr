@@ -1,6 +1,5 @@
 use crate::constants::*;
 use crate::models::{Grid, Interval, MetadataPosition, TimestampPosition};
-use clap::arg_enum;
 use structopt::StructOpt;
 
 pub fn application_args() -> Args {
@@ -60,15 +59,18 @@ pub struct Args {
     pub metadata_margin: u32,
 
     ///Position of the metadata header. Must be one of ['top', 'bottom']
-    #[structopt(possible_values = &["top", "bottom"], case_insensitive = true)]
-    pub metadata_position: Baz,
+    #[structopt(long)]
+    pub metadata_position: Option<MetadataPosition>,
 
     ///Vertical margin (in pixels) in the metadata header.
     #[structopt(long, default_value = "10")]
     pub metadata_vertical_margin: u32,
-    #[structopt(long)]
+
+    // TODO: move this to another struct 
     pub num_groups: u32,
-    #[structopt(long)]
+
+    // TODO: num_samples logic
+    #[structopt(long, help = "number of samples")]
     pub num_samples: Option<u32>,
     #[structopt(long)]
     pub num_selected: u32,
@@ -146,15 +148,5 @@ impl Default for Args {
             timestamp_vertical_padding: DEFAULT_TIMESTAMP_VERTICAL_PADDING,
             vcs_width: DEFAULT_CONTACT_SHEET_WIDTH,
         }
-    }
-}
-
-
-arg_enum! {
-    #[derive(Debug)]
-    enum Baz {
-        Foo,
-        Bar,
-        FooBar
     }
 }
