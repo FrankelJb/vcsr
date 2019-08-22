@@ -1,11 +1,13 @@
 use crate::constants::*;
-use crate::errors::{CustomError};
+use crate::errors::CustomError;
+use clap::arg_enum;
 use image;
 use serde::{Deserialize, Serialize};
 use std::io;
 use std::path::Path;
 use std::process::{Command, Stdio};
 use std::{fmt, str, str::FromStr};
+use structopt::StructOpt;
 
 use rustfft::{num_complex::Complex, num_traits::Zero, FFTplanner};
 
@@ -667,7 +669,9 @@ pub struct Ffprobe {
     pub format: Format,
 }
 
+#[derive(Debug, StructOpt)]
 pub struct Interval {
+    #[structopt(long = "interval")]
     pub interval: String,
 }
 
@@ -677,22 +681,35 @@ impl Interval {
     }
 }
 
-#[derive(Debug, StructOpt)]
-pub enum MetadataPosition {
-    Top,
-    Bottom,
+impl FromStr for Interval {
+    type Err = CustomError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(Interval {
+            interval: String::from(s),
+        })
+    }
 }
 
+arg_enum! {
+    #[derive(Debug, StructOpt)]
+    pub enum MetadataPosition {
+        Top,
+        Bottom,
+    }
+}
 
-#[derive(Debug, StructOpt)]
-pub enum TimestampPosition {
-    North,
-    South,
-    East,
-    West,
-    NE,
-    NW,
-    SE,
-    SW,
-    Center,
+arg_enum! {
+    #[derive(Debug, StructOpt)]
+    pub enum TimestampPosition {
+        North,
+        South,
+        East,
+        West,
+        NE,
+        NW,
+        SE,
+        SW,
+        Center,
+    }
 }

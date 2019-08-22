@@ -1,5 +1,7 @@
 #![allow(dead_code)]
 
+#[macro_use]
+extern crate clap;
 extern crate env_logger;
 extern crate image;
 #[macro_use]
@@ -9,8 +11,6 @@ extern crate rand;
 extern crate rayon;
 extern crate serde;
 extern crate serde_json;
-#[macro_use]
-extern crate structopt;
 extern crate textwrap;
 
 mod args;
@@ -31,8 +31,12 @@ fn main() {
 
     let args = args::application_args();
 
+    info!("{:?}", args.fast);
+    panic!("{:?}", args.filenames);
+
     // TODO: Handle results to main
-    let ffprobe = models::MediaInfo::probe_media(&Path::new(&args.input_path)).unwrap();
+    let ffprobe =
+        models::MediaInfo::probe_media(&Path::new(&args.filenames.first().unwrap())).unwrap();
     let mut media_info = models::MediaInfo {
         ffprobe: ffprobe,
         ..Default::default()
@@ -42,7 +46,12 @@ fn main() {
     // info!("duration: {}", media_info.duration);
     media_info.parse_attributes();
     // info!("media_info: {:?}", media_info);
-    let media_capture = models::MediaCapture::new(args.input_path.to_string(), None, None, None);
+    let media_capture = models::MediaCapture::new(
+        args.filenames.first().unwrap().to_string(),
+        None,
+        None,
+        None,
+    );
     media_capture.make_capture(
         "00:02:45".to_string(),
         media_info.display_width.unwrap() / 3,

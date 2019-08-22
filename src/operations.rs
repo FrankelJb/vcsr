@@ -74,12 +74,13 @@ pub fn select_sharpest_images(
         Some(args.grid_horizontal_spacing),
     );
 
-    let timestamps = match &args.manual_timestamps {
-        Some(timestamps) => timestamps
+    let timestamps = if args.manual_timestamps.len() > 0 {
+        args.manual_timestamps
             .iter()
             .map(|ts| (MediaInfo::pretty_to_seconds(ts.to_string()), ts.to_string()))
-            .collect(),
-        None => timestamp_generator(media_info, &args),
+            .collect()
+    } else {
+        timestamp_generator(media_info, &args)
     };
 
     let do_capture = |task_number: usize,
