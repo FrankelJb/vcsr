@@ -1,4 +1,3 @@
-use crate::constants::*;
 use crate::models::{Grid, Interval, MetadataPosition, TimestampPosition};
 use structopt::StructOpt;
 
@@ -7,33 +6,78 @@ pub fn application_args() -> Args {
 }
 
 #[derive(Debug, StructOpt)]
+#[structopt(
+    raw(setting = "structopt::clap::AppSettings::ColoredHelp"),
+    rename_all = "kebab-case"
+)]
 pub struct Args {
+    ///Make accurate captures. This capture mode is way slower than the default one but it helps when capturing frames from HEVC videos.
+    #[structopt(long, short)]
+    pub accurate: bool,
+
+    ///Fast skip to N seconds before capture time, then do accurate capture (decodes N seconds of video before each capture). This is used with accurate capture mode only.
+    #[structopt(long, short = "A", default_value = "1", required = false)]
+    pub accurate_delay_seconds: u32,
+
     ///Color of the timestamp background rectangle in hexadecimal, for example AABBCC
-    #[structopt(long, default_value = "000000")]
+    #[structopt(long, default_value = "000000", required = false)]
     pub background_colour: String,
+
+    ///Make thumbnails of actual size. In other words, thumbnails will have the actual 1:1 size of the video resolution.
+    #[structopt(long, short = "S")]
+    pub actual_size: bool,
+
     ///Alpha channel value for the captures (transparency in range [0, 255]). Defaults to 255 (opaque)
-    #[structopt(long, default_value = "255")]
+    #[structopt(long, default_value = "255", required = false)]
     pub capture_alpha: u8,
+
+    ///do not capture frames in the first and last n percent of total time
+    #[structopt(long)]
+    pub delay_percent: Option<f32>,
+
     ///do not capture frames in the last n percent of total time
-    #[structopt(long, default_value = "7")]
+    #[structopt(long, default_value = "7", required = false)]
     pub end_delay_percent: f32,
+
+    ///Do not process files that end with the given extensions.
+    #[structopt(long)]
+    pub exclude_extensions: Vec<String>,
+
     ///Fast mode. Just make a contact sheet as fast as possible, regardless of output image quality. May mess up the terminal.
     #[structopt(long)]
     pub fast: bool,
+
+    ///Frame type passed to ffmpeg 'select=eq(pict_type,FRAME_TYPE)' filter. Should be one of ('I', 'B', 'P') or the special type 'key' which will use the 'select=key' filter instead.
+    #[structopt(long, default_value = "key", required = false)]
+    pub frame_type: String,
+
+    #[structopt(multiple = true, last = true)]
+    pub filenames: Vec<String>,
+
     ///display frames on a mxn grid (for example 4x5). The special value zero (as in 2x0 or 0x5 or 0x0) is only allowed when combined with --interval or with --manual. Zero means that the component should be automatically deduced based on other arguments passed.
-    #[structopt(long, default_value = "4x4")]
+    #[structopt(long, short = "g", default_value = "4x4", required = false)]
     pub grid: Grid,
 
+    ///number of pixels spacing captures both vertically and horizontally
+    #[structopt(long)]
+    pub grid_spacing: Option<u32>,
+
     ///number of pixels spacing captures horizontally
-    #[structopt(long, default_value = "5")]
+    #[structopt(long, default_value = "5", required = false)]
     pub grid_horizontal_spacing: u32,
 
     ///number of pixels spacing captures vertically
-    #[structopt(long, default_value = "5")]
+    #[structopt(long, default_value = "5", required = false)]
     pub grid_vertical_spacing: u32,
 
-    #[structopt(multiple = true)]
-    pub filenames: Vec<String>,
+    ///Output image format. Can be any format supported by pillow. For example 'png' or 'jpg'.
+    #[structopt(long, short, default_value = "jpg", required = false)]
+    pub format: String,
+
+    ///Ignore any error encountered while processing files recursively and continue to the next file.
+    #[structopt(long)]
+    pub ignore_errors: bool,
+
     ///Capture frames at specified interval. Interval format is any string supported by `parsedatetime`. For example '5m', '3 minutes 5 seconds', '1 hour 15 min and 20 sec' etc.
     #[structopt(long)]
     pub interval: Option<Interval>,
@@ -42,66 +86,147 @@ pub struct Args {
     #[structopt(long = "manual", short = "m", required = false)]
     pub manual_timestamps: Vec<String>,
 
+    ///Path to TTF font used for metadata
+    #[structopt(
+        long,
+        default_value = "/usr/share/fonts/TTF/DejaVuSans-Bold.ttf",
+        required = false
+    )]
+    pub metadata_font: String,
+
     ///Color of the metadata font in hexadecimal, for example AABBCC
-    #[structopt(long, default_value = "ffffff")]
+    #[structopt(long, default_value = "ffffff", required = false)]
     pub metadata_font_colour: String,
 
     ///size of the font used for metadata
-    #[structopt(long, default_value = "12.0")]
+    #[structopt(long, default_value = "12.0", required = false)]
     pub metadata_font_size: f32,
 
     ///Horizontal margin (in pixels) in the metadata header.
-    #[structopt(long, default_value = "10")]
+    #[structopt(long, default_value = "10", required = false)]
     pub metadata_horizontal_margin: u32,
 
     ///Margin (in pixels) in the metadata header.
-    #[structopt(long, default_value = "10")]
+    #[structopt(long, default_value = "10", required = false)]
     pub metadata_margin: u32,
 
-    ///Position of the metadata header. Must be one of ['top', 'bottom']
-    #[structopt(long)]
+    ///Position of the metadata header.
+    #[structopt(
+        long,
+        raw(
+            possible_values = "&MetadataPosition::variants()",
+            case_insensitive = "true"
+        )
+    )]
     pub metadata_position: Option<MetadataPosition>,
 
     ///Vertical margin (in pixels) in the metadata header.
-    #[structopt(long, default_value = "10")]
+    #[structopt(long, default_value = "10", required = false)]
     pub metadata_vertical_margin: u32,
 
-    // TODO: move this to another struct 
+    ///Do not overwrite output file if it already exists, simply ignore this file and continue processing other unprocessed files.
+    #[structopt(long)]
+    pub no_overwrite: bool,
+
+    // TODO: move this to another struct
+    #[structopt(long, required = false, default_value = "1")]
     pub num_groups: u32,
+    #[structopt(long, required = false, default_value = "1")]
+    pub num_selected: u32,
+
+    ///save to output file
+    #[structopt(long = "output", short = "o")]
+    pub output_path: Option<String>,
+
+    ///Process every file in the specified directory recursively
+    #[structopt(long, short)]
+    pub recursive: bool,
 
     // TODO: num_samples logic
-    #[structopt(long, help = "number of samples")]
+    ///number of samples
+    #[structopt(long, short = "s", help = "number of samples")]
     pub num_samples: Option<u32>,
-    #[structopt(long)]
-    pub num_selected: u32,
-    #[structopt(long)]
+
+    ///do not capture frames in the first n percent of total time
+    #[structopt(long, default_value = "7", required = false)]
     pub start_delay_percent: f32,
-    #[structopt(long)]
+
+    ///display timestamp for each frame
+    #[structopt(long, short = "t")]
     pub show_timestamp: bool,
-    #[structopt(long)]
+
+    ///Save thumbnail files to the specified output directory. If set, the thumbnail files will not be deleted after successful creation of the contact sheet.
+    #[structopt(long, short = "O")]
+    pub thumbnail_output_path: Option<String>,
+
+    ///Color of the timestamp background rectangle in hexadecimal, for example AABBCC
+    #[structopt(long, default_value = "000000aa", required = false)]
     pub timestamp_background_colour: String,
-    #[structopt(long)]
+
+    ///Color of the timestamp border in hexadecimal, for example AABBCC
+    #[structopt(long, default_value = "000000", required = false)]
     pub timestamp_border_colour: String,
+
+    ///Draw timestamp text with a border instead of the default rectangle.
     #[structopt(long)]
     pub timestamp_border_mode: bool,
-    #[structopt(long)]
+
+    ///Size of the timestamp border in pixels (used only with --timestamp-border-mode).
+    #[structopt(long, default_value = "1", required = false)]
     pub timestamp_border_size: u32,
-    #[structopt(long)]
+
+    ///Path to TTF font used for timestamps
+    #[structopt(
+        long,
+        default_value = "/usr/share/fonts/TTF/DejaVuSans.ttf",
+        required = false
+    )]
+    pub timestamp_font: String,
+
+    ///Color of the timestamp font in hexadecimal, for example AABBCC
+    #[structopt(long, default_value = "ffffff", required = false)]
     pub timestamp_font_colour: String,
-    #[structopt(long)]
+
+    ///size of the font used for timestamps
+    #[structopt(long, default_value = "12", required = false)]
     pub timestamp_font_size: f32,
-    #[structopt(long)]
+
+    ///Timestamp position.
+    #[structopt(
+        long,
+        short = "T",
+        raw(
+            possible_values = "&TimestampPosition::variants()",
+            case_insensitive = "true"
+        ),
+        default_value = "se",
+        required = false
+    )]
     pub timestamp_position: TimestampPosition,
-    #[structopt(long)]
+
+    ////Horizontal margin (in pixels) for timestamps.
+    #[structopt(long, default_value = "5", required = false)]
     pub timestamp_horizontal_margin: u32,
-    #[structopt(long)]
+
+    ///Horizontal padding (in pixels) for timestamps.
+    #[structopt(long, default_value = "3", required = false)]
     pub timestamp_horizontal_padding: u32,
-    #[structopt(long)]
+
+    ///Vertical margin (in pixels) for timestamps.
+    #[structopt(long, default_value = "5", required = false)]
     pub timestamp_vertical_margin: u32,
-    #[structopt(long)]
+
+    ///Vertical padding (in pixels) for timestamps.
+    #[structopt(long, default_value = "1", required = false)]
     pub timestamp_vertical_padding: u32,
-    #[structopt(long)]
+
+    ///width of the generated contact sheet
+    #[structopt(long = "width", short = "w", default_value = "1500", required = false)]
     pub vcs_width: u32,
+
+    ///display verbose messages
+    #[structopt(long, short)]
+    pub verbose: bool,
 }
 
 impl Args {
@@ -110,43 +235,44 @@ impl Args {
     }
 }
 
-impl Default for Args {
-    fn default() -> Self {
-        Args {
-            background_colour: String::from(DEFAULT_BACKGROUND_COLOUR),
-            capture_alpha: DEFAULT_CAPTURE_ALPHA,
-            end_delay_percent: 7.0,
-            fast: false,
-            grid: DEFAULT_GRID_SPACING,
-            grid_horizontal_spacing: DEFAULT_GRID_HORIZONTAL_SPACING,
-            grid_vertical_spacing: DEFAULT_GRID_VERTICAL_SPACING,
-            interval: None,
-            filenames: vec![],
-            manual_timestamps: vec![],
-            metadata_font_colour: String::from(DEFAULT_METADATA_FONT_COLOUR),
-            metadata_font_size: DEFAULT_METADATA_FONT_SIZE,
-            metadata_horizontal_margin: DEFAULT_METADATA_HORIZONTAL_MARGIN,
-            metadata_margin: DEFAULT_METADATA_MARGIN,
-            metadata_position: Some(MetadataPosition::Top),
-            metadata_vertical_margin: DEFAULT_METADATA_VERTICAL_MARGIN,
-            // TODO: Change this to the right thing
-            num_groups: 16,
-            num_samples: Args::num_samples(DEFAULT_GRID_SPACING),
-            num_selected: DEFAULT_GRID_SPACING.x * DEFAULT_GRID_SPACING.y,
-            start_delay_percent: 7.0,
-            show_timestamp: true,
-            timestamp_background_colour: String::from(DEFAULT_TIMESTAMP_BACKGROUND_COLOUR),
-            timestamp_border_colour: String::from(DEFAULT_TIMESTAMP_BORDER_COLOUR),
-            timestamp_border_mode: false,
-            timestamp_border_size: DEFAULT_TIMESTAMP_BORDER_SIZE,
-            timestamp_font_colour: String::from(DEFAULT_TIMESTAMP_FONT_COLOUR),
-            timestamp_font_size: DEFAULT_TIMESTAMP_FONT_SIZE,
-            timestamp_position: TimestampPosition::SE,
-            timestamp_horizontal_margin: DEFAULT_TIMESTAMP_HORIZONTAL_MARGIN,
-            timestamp_horizontal_padding: DEFAULT_TIMESTAMP_HORIZONTAL_PADDING,
-            timestamp_vertical_margin: DEFAULT_TIMESTAMP_VERTICAL_MARGIN,
-            timestamp_vertical_padding: DEFAULT_TIMESTAMP_VERTICAL_PADDING,
-            vcs_width: DEFAULT_CONTACT_SHEET_WIDTH,
-        }
-    }
-}
+// impl Default for Args {
+//     fn default() -> Self {
+//         Args {
+//             background_colour: String::from(DEFAULT_BACKGROUND_COLOUR),
+//             capture_alpha: DEFAULT_CAPTURE_ALPHA,
+//             end_delay_percent: 7.0,
+//             fast: false,
+//             grid: DEFAULT_GRID_SPACING,
+//             grid_horizontal_spacing: DEFAULT_GRID_HORIZONTAL_SPACING,
+//             grid_vertical_spacing: DEFAULT_GRID_VERTICAL_SPACING,
+//             interval: None,
+//             filenames: vec![],
+//             manual_timestamps: vec![],
+//             metadata_font_colour: String::from(DEFAULT_METADATA_FONT_COLOUR),
+//             metadata_font_size: DEFAULT_METADATA_FONT_SIZE,
+//             metadata_horizontal_margin: DEFAULT_METADATA_HORIZONTAL_MARGIN,
+//             metadata_margin: DEFAULT_METADATA_MARGIN,
+//             metadata_position: Some(MetadataPosition::Top),
+//             metadata_vertical_margin: DEFAULT_METADATA_VERTICAL_MARGIN,
+//             // TODO: Change this to the right thing
+//             num_groups: 16,
+//             num_samples: Args::num_samples(DEFAULT_GRID_SPACING),
+//             num_selected: DEFAULT_GRID_SPACING.x * DEFAULT_GRID_SPACING.y,
+//             output_path: None
+//             start_delay_percent: 7.0,
+//             show_timestamp: true,
+//             timestamp_background_colour: String::from(DEFAULT_TIMESTAMP_BACKGROUND_COLOUR),
+//             timestamp_border_colour: String::from(DEFAULT_TIMESTAMP_BORDER_COLOUR),
+//             timestamp_border_mode: false,
+//             timestamp_border_size: DEFAULT_TIMESTAMP_BORDER_SIZE,
+//             timestamp_font_colour: String::from(DEFAULT_TIMESTAMP_FONT_COLOUR),
+//             timestamp_font_size: DEFAULT_TIMESTAMP_FONT_SIZE,
+//             timestamp_position: TimestampPosition::SE,
+//             timestamp_horizontal_margin: DEFAULT_TIMESTAMP_HORIZONTAL_MARGIN,
+//             timestamp_horizontal_padding: DEFAULT_TIMESTAMP_HORIZONTAL_PADDING,
+//             timestamp_vertical_margin: DEFAULT_TIMESTAMP_VERTICAL_MARGIN,
+//             timestamp_vertical_padding: DEFAULT_TIMESTAMP_VERTICAL_PADDING,
+//             vcs_width: DEFAULT_CONTACT_SHEET_WIDTH,
+//         }
+//     }
+// }

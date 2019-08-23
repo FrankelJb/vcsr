@@ -18,8 +18,28 @@ mod errors;
 mod models;
 mod operations;
 
-use std::env;
+use std::ffi::OsStr;
 use std::path::Path;
+use std::{env, error::Error};
+use walkdir::{DirEntry, WalkDir};
+
+// impl Termination for () {
+//     fn report(self) -> i32 {
+//         ExitCode::SUCCESS.report()
+//     }
+// }
+
+// impl<E: fmt::Debug> Termination for Result<(), E> {
+//     fn report(self) -> i32 {
+//         match self {
+//             Ok(()) => ().report(),
+//             Err(err) => {
+//                 eprintln!("Error: {:?}", err);
+//                 ExitCode::FAILURE.report()
+//             }
+//         }
+//     }
+// }
 
 fn main() {
     // TODO: Check that ffprobe is installed
@@ -29,10 +49,48 @@ fn main() {
     env_logger::init();
 
     let args = args::application_args();
+    let mut walker: WalkDir;
 
-    info!("{:?}", args.fast);
-    panic!("{:?}", args.filenames);
+    for path in &args.filenames {
+        if args.recursive {
+            walker = WalkDir::new(path);
+        } else {
+            walker = WalkDir::new(path).max_depth(1);
+        }
+        for entry in walker
+            .into_iter()
+            .filter_map(|e| e.ok())
+            .filter(|e| e.file_type().is_file())
+            .filter(|e| e.path().extension() != None)
+            .filter(|e| {
+                !args.exclude_extensions.contains(&String::from(
+                    e.path().extension().and_then(OsStr::to_str).unwrap(),
+                ))
+            })
+        {
+            info!("entry: {:?}", entry);
+        }
+    }
 
+}
+
+fn process_file(dir_entry: DirEntry, args: &args::Args) -> Result<(), &'static str> {
+
+    let file_name_str = dir_entry.file_name().to_str().unwrap();
+
+    if args.verbose {
+        info!("Considering {}", file_name_str);
+    }
+
+    if !dir_entry.path().exists() {
+        if args.ignore_errors {
+            info!("File does not exist, skipping {}: ", file_name_str);
+            return Ok(());
+        }
+        else {
+            return Err(&format!("File does not exist: {}", file_name_str));
+        }
+    }
     // TODO: Handle results to main
     let ffprobe =
         models::MediaInfo::probe_media(&Path::new(&args.filenames.first().unwrap())).unwrap();
@@ -74,4 +132,5 @@ fn main() {
     let mut selected_frames =
         operations::select_sharpest_images(&media_info, &media_capture, &args);
     operations::compose_contact_sheet(media_info, &mut selected_frames, &args);
+    Ok(())
 }
