@@ -18,7 +18,7 @@ use textwrap::fill;
 
 pub fn grid_desired_size(
     grid: &Grid,
-    media_info: &MediaInfo,
+    dimensions: &Dimensions,
     width: Option<u32>,
     horizontal_margin: Option<u32>,
 ) -> Grid {
@@ -34,24 +34,27 @@ pub fn grid_desired_size(
 
     let desired_width = (width - (grid.x - 1) * horizontal_margin) / grid.x;
 
-    media_info.desired_size(Some(desired_width))
+    MediaInfo::desired_size(dimensions, Some(desired_width))
 }
 
-pub fn total_delay_seconds(media_info: &MediaInfo, args: &Args) -> f32 {
+pub fn total_delay_seconds(media_attributes: &MediaAttributes, args: &Args) -> f32 {
     let start_delay_seconds =
-        (media_info.duration_seconds * args.start_delay_percent / 100.0).floor();
-    let end_delay_seconds = (media_info.duration_seconds * args.end_delay_percent / 100.0).floor();
+        (media_attributes.duration_seconds * args.start_delay_percent / 100.0).floor();
+    let end_delay_seconds =
+        (media_attributes.duration_seconds * args.end_delay_percent / 100.0).floor();
     start_delay_seconds + end_delay_seconds
 }
 
-pub fn timestamp_generator(media_info: &MediaInfo, args: &Args) -> Vec<(f32, String)> {
-    let delay = total_delay_seconds(media_info, args);
+pub fn timestamp_generator(media_attributes: &MediaAttributes, args: &Args) -> Vec<(f32, String)> {
+    let delay = total_delay_seconds(media_attributes, args);
     let capture_interval = match &args.interval {
         Some(interval) => interval.total_seconds(),
-        None => (media_info.duration_seconds - delay) / (args.num_samples.unwrap() as f32 + 1.0),
+        None => {
+            (media_attributes.duration_seconds - delay) / (args.num_samples.unwrap() as f32 + 1.0)
+        }
     };
 
-    let mut time = (media_info.duration_seconds * args.start_delay_percent / 100.0).floor();
+    let mut time = (media_attributes.duration_seconds * args.start_delay_percent / 100.0).floor();
 
     (0..args.num_samples.unwrap())
         .into_iter()
@@ -63,13 +66,13 @@ pub fn timestamp_generator(media_info: &MediaInfo, args: &Args) -> Vec<(f32, Str
 }
 
 pub fn select_sharpest_images(
-    media_info: &MediaInfo,
+    media_attributes: &MediaAttributes,
     media_capture: &MediaCapture,
     args: &Args,
-) -> Vec<Frame> {
+) -> (Vec<Frame>, Vec<Frame>) {
     let desired_size = grid_desired_size(
         &args.grid,
-        media_info,
+        &media_attributes.dimensions,
         Some(args.vcs_width),
         Some(args.grid_horizontal_spacing),
     );
@@ -80,7 +83,7 @@ pub fn select_sharpest_images(
             .map(|ts| (MediaInfo::pretty_to_seconds(ts.to_string()), ts.to_string()))
             .collect()
     } else {
-        timestamp_generator(media_info, &args)
+        timestamp_generator(media_attributes, &args)
     };
 
     let do_capture = |task_number: usize,
@@ -130,11 +133,12 @@ pub fn select_sharpest_images(
             )
         })
         .collect();
-    blurs.sort_by(|a, b| a.timestamp.partial_cmp(&b.timestamp).unwrap());
+    &blurs.sort_by(|a, b| a.timestamp.partial_cmp(&b.timestamp).unwrap());
 
+    let num_groups = args.num_groups.unwrap();
     let mut selected_items: Vec<Frame> = vec![];
-    if args.num_groups > 1 {
-        let group_size = 1.max(blurs.len() as u32 / args.num_groups);
+    if num_groups > 1 {
+        let group_size = 1.max(blurs.len() as u32 / num_groups);
         for chunk in blurs.chunks_mut(group_size as usize) {
             chunk.sort_by(|a, b| a.timestamp.partial_cmp(&b.timestamp).unwrap());
             if let Some(c) = chunk.last() {
@@ -142,11 +146,11 @@ pub fn select_sharpest_images(
             }
         }
     } else {
-        selected_items = blurs;
+        selected_items = blurs.clone();
     };
 
-    let selected_items = select_colour_variety(&mut selected_items, args.num_groups);
-    selected_items
+    let selected_items = select_colour_variety(&mut selected_items, num_groups);
+    (selected_items, blurs)
 }
 
 pub fn select_colour_variety(frames: &mut Vec<Frame>, num_selected: u32) -> Vec<Frame> {
@@ -230,7 +234,8 @@ pub fn max_line_length(
 }
 
 pub fn prepare_metadata_text_lines(
-    media_info: &MediaInfo,
+    media_attributes: &MediaAttributes,
+    dimensions: &Dimensions,
     header_font: &Font,
     header_margin: u32,
     width: u32,
@@ -243,11 +248,11 @@ pub fn prepare_metadata_text_lines(
         File size: {size}
         Duration: {duration}
         Dimensions: {sample_width}x{sample_height}"#,
-        filename = media_info.filename,
-        size = media_info.size,
-        duration = media_info.duration,
-        sample_width = media_info.display_width.unwrap(),
-        sample_height = media_info.display_height.unwrap()
+        filename = media_attributes.filename,
+        size = media_attributes.size,
+        duration = media_attributes.duration,
+        sample_width = dimensions.display_width.unwrap(),
+        sample_height = dimensions.display_height.unwrap()
     );
 
     let template_lines = template
@@ -255,7 +260,7 @@ pub fn prepare_metadata_text_lines(
         .map(|s| if s.len() > 0 { s.trim() } else { s });
     for line in template_lines {
         let max_metadata_line_length = max_line_length(
-            media_info.filename.clone(),
+            media_attributes.filename.clone(),
             header_font.clone(),
             16.0,
             header_margin,
@@ -330,13 +335,14 @@ pub fn load_font<'a>(
 }
 
 pub fn compose_contact_sheet(
-    media_info: MediaInfo,
+    media_attributes: &MediaAttributes,
     frames: &mut Vec<Frame>,
     args: &Args,
 ) -> ImageBuffer<Rgba<u8>, Vec<u8>> {
+    let dimensions = &media_attributes.dimensions;
     let desired_size = grid_desired_size(
         &args.grid,
-        &media_info,
+        &dimensions,
         Some(args.vcs_width),
         Some(args.grid_horizontal_spacing),
     );
@@ -351,7 +357,8 @@ pub fn compose_contact_sheet(
     let timestamp_border_colour = decode_hex(&args.timestamp_border_colour);
 
     let header_lines = prepare_metadata_text_lines(
-        &media_info,
+        &media_attributes,
+        &dimensions,
         &header_font,
         args.metadata_horizontal_margin,
         width,
@@ -400,9 +407,9 @@ pub fn compose_contact_sheet(
         if args.show_timestamp {
             let timestamp_time = MediaInfo::pretty_duration(frame.timestamp, true, false);
             let _timestamp_duration =
-                MediaInfo::pretty_duration(media_info.duration_seconds, true, true);
+                MediaInfo::pretty_duration(media_attributes.duration_seconds, true, true);
             let _parsed_time = MediaInfo::parse_duration(frame.timestamp);
-            let _parsed_duraton = MediaInfo::parse_duration(media_info.duration_seconds);
+            let _parsed_duraton = MediaInfo::parse_duration(media_attributes.duration_seconds);
 
             // TODO: Handlebar
             let timestamp_text = format!("{time}", time = timestamp_time);

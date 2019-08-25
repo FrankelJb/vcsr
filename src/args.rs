@@ -16,8 +16,8 @@ pub struct Args {
     pub accurate: bool,
 
     ///Fast skip to N seconds before capture time, then do accurate capture (decodes N seconds of video before each capture). This is used with accurate capture mode only.
-    #[structopt(long, short = "A", default_value = "1", required = false)]
-    pub accurate_delay_seconds: u32,
+    #[structopt(long, short = "A")]
+    pub accurate_delay_seconds: Option<f32>,
 
     ///Color of the timestamp background rectangle in hexadecimal, for example AABBCC
     #[structopt(long, default_value = "000000", required = false)]
@@ -48,8 +48,8 @@ pub struct Args {
     pub fast: bool,
 
     ///Frame type passed to ffmpeg 'select=eq(pict_type,FRAME_TYPE)' filter. Should be one of ('I', 'B', 'P') or the special type 'key' which will use the 'select=key' filter instead.
-    #[structopt(long, default_value = "key", required = false)]
-    pub frame_type: String,
+    #[structopt(long)]
+    pub frame_type: Option<String>,
 
     #[structopt(multiple = true, last = true)]
     pub filenames: Vec<String>,
@@ -129,10 +129,10 @@ pub struct Args {
     pub no_overwrite: bool,
 
     // TODO: move this to another struct
-    #[structopt(long, required = false, default_value = "1")]
-    pub num_groups: u32,
-    #[structopt(long, required = false, default_value = "1")]
-    pub num_selected: u32,
+    #[structopt(long)]
+    pub num_groups: Option<u32>,
+    #[structopt(long)]
+    pub num_selected: Option<u32>,
 
     ///save to output file
     #[structopt(long = "output", short = "o")]

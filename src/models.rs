@@ -3,6 +3,7 @@ use crate::errors::CustomError;
 use clap::arg_enum;
 use image;
 use serde::{Deserialize, Serialize};
+use std::error::Error;
 use std::io;
 use std::path::Path;
 use std::process::{Command, Stdio};
@@ -15,6 +16,14 @@ use rustfft::{num_complex::Complex, num_traits::Zero, FFTplanner};
 pub struct Grid {
     pub x: u32,
     pub y: u32,
+}
+
+impl Eq for Grid {}
+
+impl PartialEq for Grid {
+    fn eq(&self, other: &Self) -> bool {
+        self.x == other.x && self.y == other.y
+    }
 }
 
 impl fmt::Display for Grid {
@@ -52,30 +61,26 @@ pub struct Frame {
 #[derive(Clone, Debug, Default)]
 pub struct MediaInfo {
     pub ffprobe: Ffprobe,
-    pub media_attributes: MediaAttributes,
-    pub audio_codec: Option<String>,
-    pub audio_codec_long: Option<String>,
-    pub audio_bit_rate: Option<u32>,
-    pub audio_sample_rate: Option<u32>,
-    pub display_aspect_ratio: Option<String>,
-    pub display_height: Option<u32>,
-    pub display_width: Option<u32>,
-    pub duration: String,
-    pub duration_seconds: f32,
-    pub filename: String,
-    pub frame_rate: u32,
-    pub sample_aspect_ratio: Option<String>,
-    pub sample_height: Option<u32>,
-    pub sample_width: Option<u32>,
-    pub size_bytes: i32,
-    pub size: String,
-    pub video_codec: Option<String>,
-    pub video_codec_long: Option<String>,
+    pub media_attributes: Option<MediaAttributes>,
 }
 
 #[derive(Clone, Debug, Default)]
 pub struct MediaAttributes {
     pub dimensions: Dimensions,
+    pub audio_codec: Option<String>,
+    pub audio_codec_long: Option<String>,
+    pub audio_bit_rate: Option<u32>,
+    pub audio_sample_rate: Option<u32>,
+    pub display_aspect_ratio: Option<String>,
+    pub duration: String,
+    pub duration_seconds: f32,
+    pub filename: String,
+    pub frame_rate: u32,
+    pub sample_aspect_ratio: Option<String>,
+    pub size_bytes: f64,
+    pub size: String,
+    pub video_codec: Option<String>,
+    pub video_codec_long: Option<String>,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -87,18 +92,16 @@ pub struct Dimensions {
 }
 
 impl MediaInfo {
-    pub fn new(path: &Path, _verbose: bool) -> Result<(), io::Error> {
+    pub fn new(path: &Path, _verbose: bool) -> Result<MediaInfo, CustomError> {
         let ffprobe = Self::probe_media(path)?;
-        let _video_stream = Self::find_video_stream(&ffprobe);
-        let _audio_stream = Self::find_audio_stream(&ffprobe);
-        let _dimensions = Self::compute_display_resolution(&ffprobe);
-        let (_duration_seconds, _duration) = Self::compute_duration(&ffprobe).unwrap();
-        let _filename = Self::compute_filename(&ffprobe);
-        let (_size_bytes, _size) = Self::compute_size(&ffprobe).unwrap();
-        Ok(())
+        let media_attributes = Self::create_media_attributes(&ffprobe)?;
+        Ok(MediaInfo {
+            ffprobe: ffprobe,
+            media_attributes: Some(media_attributes),
+        })
     }
 
-    pub fn probe_media(path: &Path) -> Result<Ffprobe, io::Error> {
+    pub fn probe_media(path: &Path) -> Result<Ffprobe, CustomError> {
         if path.exists() {
             let output = Command::new("ffprobe")
                 // .arg("-v")
@@ -119,16 +122,16 @@ impl MediaInfo {
                 let v: Ffprobe = serde_json::from_str(stdout).unwrap();
                 Ok(v)
             } else {
-                Err(io::Error::new(
+                Err(CustomError::Io(io::Error::new(
                     io::ErrorKind::Other,
                     "ffprobe crashed unexpectedly",
-                ))
+                )))
             }
         } else {
-            Err(io::Error::new(
+            Err(CustomError::Io(io::Error::new(
                 io::ErrorKind::Other,
                 "cannot find requested file",
-            ))
+            )))
         }
     }
 
@@ -159,7 +162,7 @@ impl MediaInfo {
         })
     }
 
-    pub fn compute_display_resolution(ffprobe: &Ffprobe) -> Option<Dimensions> {
+    pub fn compute_display_resolution(ffprobe: &Ffprobe) -> Result<Dimensions, CustomError> {
         let video_stream = Self::find_video_stream(ffprobe).unwrap().clone();
         if let Stream::VideoStream(video_stream) = video_stream {
             let mut display_height: Option<u32>;
@@ -210,14 +213,14 @@ impl MediaInfo {
                     display_height = sample_height;
                 }
             }
-            return Some(Dimensions {
+            return Ok(Dimensions {
                 display_height: display_height,
                 display_width: display_width,
                 sample_height: sample_height,
                 sample_width: sample_width,
             });
         }
-        None
+        Err(CustomError::VideoStreamError)
     }
 
     pub fn compute_duration(ffprobe: &Ffprobe) -> Option<(f32, String)> {
@@ -244,10 +247,10 @@ impl MediaInfo {
             .into_owned()
     }
 
-    pub fn compute_size(ffprobe: &Ffprobe) -> Option<(f64, String)> {
-        let size_bytes = ffprobe.format.size.parse::<f64>().unwrap();
+    pub fn compute_size(ffprobe: &Ffprobe) -> Result<(f64, String), Box<Error>> {
+        let size_bytes = ffprobe.format.size.parse::<f64>()?;
         let size = MediaInfo::human_readable_size(size_bytes);
-        Some((size_bytes, size))
+        Ok((size_bytes, size))
     }
 
     // Converts seconds to a human readable time format
@@ -332,13 +335,13 @@ impl MediaInfo {
         }
     }
 
-    pub fn desired_size(&self, width: Option<u32>) -> Grid {
+    pub fn desired_size(dimensions: &Dimensions, width: Option<u32>) -> Grid {
         let new_width = match width {
             Some(w) => w,
             None => DEFAULT_CONTACT_SHEET_WIDTH,
         };
-        let ratio = new_width as f64 / f64::from(self.display_width.unwrap());
-        let desired_height = (self.display_height.unwrap() as f64 * ratio).floor();
+        let ratio = new_width as f64 / f64::from(dimensions.display_width.unwrap());
+        let desired_height = (dimensions.display_height.unwrap() as f64 * ratio).floor();
         Grid {
             x: new_width,
             y: desired_height as u32,
@@ -346,17 +349,26 @@ impl MediaInfo {
     }
 
     // Parse multiple media attributes
-    pub fn parse_attributes(&mut self) {
+    pub fn create_media_attributes(ffprobe: &Ffprobe) -> Result<MediaAttributes, CustomError> {
+        let dimensions = Self::compute_display_resolution(&ffprobe)?;
+        let (duration_seconds, duration) = Self::compute_duration(&ffprobe).unwrap();
+        let filename = Self::compute_filename(&ffprobe);
+        let (size_bytes, size) = Self::compute_size(&ffprobe).unwrap();
+        let mut video_codec = None;
+        let mut video_codec_long = None;
+        let mut sample_aspect_ratio = None;
+        let mut display_aspect_ratio = None;
+        let mut frame_rate = 0;
+
         // video
-        let video_stream = Self::find_video_stream(&self.ffprobe).unwrap().clone();
+        let video_stream = Self::find_video_stream(&ffprobe).unwrap().clone();
         if let Stream::VideoStream(video_stream) = video_stream {
-            self.video_codec = video_stream.codec_name;
-            self.video_codec_long = video_stream.codec_long_name;
-            self.sample_aspect_ratio = Some(video_stream.sample_aspect_ratio);
-            self.display_aspect_ratio = video_stream.display_aspect_ratio;
+            video_codec = video_stream.codec_name;
+            video_codec_long = video_stream.codec_long_name;
+            sample_aspect_ratio = Some(video_stream.sample_aspect_ratio);
+            display_aspect_ratio = video_stream.display_aspect_ratio;
             if let Some(avg_frame_rate) = video_stream.avg_frame_rate {
                 let splits: Vec<&str> = avg_frame_rate.split("/").collect();
-                let frame_rate: u32;
                 if splits.len() == 2 {
                     frame_rate =
                         (splits[0]).parse::<u32>().unwrap() / splits[1].parse::<u32>().unwrap();
@@ -364,17 +376,38 @@ impl MediaInfo {
                     frame_rate = avg_frame_rate.parse::<u32>().unwrap();
                 }
 
-                self.frame_rate = frame_rate;
+                frame_rate = frame_rate;
             }
         }
-        if let Some(audio_stream) = Self::find_audio_stream(&self.ffprobe) {
+        let mut audio_codec = None;
+        let mut audio_codec_long = None;
+        let mut audio_sample_rate = None;
+        let mut audio_bit_rate = None;
+        if let Some(audio_stream) = Self::find_audio_stream(&ffprobe) {
             if let Stream::AudioStream(audio_stream) = audio_stream.clone() {
-                self.audio_codec = Some(audio_stream.codec_name);
-                self.audio_codec_long = audio_stream.codec_long_name;
-                self.audio_sample_rate = Some(audio_stream.sample_rate.unwrap().parse().unwrap());
-                self.audio_bit_rate = Some(audio_stream.bit_rate.unwrap().parse().unwrap());
+                audio_codec = Some(audio_stream.codec_name);
+                audio_codec_long = audio_stream.codec_long_name;
+                audio_sample_rate = Some(audio_stream.sample_rate.unwrap().parse().unwrap());
+                audio_bit_rate = Some(audio_stream.bit_rate.unwrap().parse().unwrap());
             }
         }
+        Ok(MediaAttributes {
+            audio_codec: audio_codec,
+            audio_codec_long: audio_codec_long,
+            audio_sample_rate: audio_sample_rate,
+            audio_bit_rate: audio_bit_rate,
+            dimensions: dimensions,
+            display_aspect_ratio: display_aspect_ratio,
+            duration: duration,
+            duration_seconds: duration_seconds,
+            filename: filename,
+            frame_rate: frame_rate,
+            sample_aspect_ratio: sample_aspect_ratio,
+            size: size,
+            size_bytes: size_bytes,
+            video_codec: video_codec,
+            video_codec_long: video_codec_long,
+        })
     }
 }
 
@@ -388,14 +421,10 @@ pub struct MediaCapture {
 impl MediaCapture {
     pub fn new(
         path: String,
-        accurate: Option<bool>,
+        accurate: bool,
         skip_delay_seconds: Option<f32>,
         frame_type: Option<String>,
     ) -> MediaCapture {
-        let accurate = match accurate {
-            Some(a) => a,
-            None => false,
-        };
         let skip_delay_seconds = match skip_delay_seconds {
             Some(s) => s,
             None => DEFAULT_ACCURATE_DELAY_SECONDS,
