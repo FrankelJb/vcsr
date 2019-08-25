@@ -52,6 +52,7 @@ pub struct Frame {
 #[derive(Clone, Debug, Default)]
 pub struct MediaInfo {
     pub ffprobe: Ffprobe,
+    pub media_attributes: MediaAttributes,
     pub audio_codec: Option<String>,
     pub audio_codec_long: Option<String>,
     pub audio_bit_rate: Option<u32>,
@@ -72,7 +73,31 @@ pub struct MediaInfo {
     pub video_codec_long: Option<String>,
 }
 
+#[derive(Clone, Debug, Default)]
+pub struct MediaAttributes {
+    pub dimensions: Dimensions,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct Dimensions {
+    pub display_height: Option<u32>,
+    pub display_width: Option<u32>,
+    pub sample_height: Option<u32>,
+    pub sample_width: Option<u32>,
+}
+
 impl MediaInfo {
+    pub fn new(path: &Path, _verbose: bool) -> Result<(), io::Error> {
+        let ffprobe = Self::probe_media(path)?;
+        let _video_stream = Self::find_video_stream(&ffprobe);
+        let _audio_stream = Self::find_audio_stream(&ffprobe);
+        let _dimensions = Self::compute_display_resolution(&ffprobe);
+        let (_duration_seconds, _duration) = Self::compute_duration(&ffprobe).unwrap();
+        let _filename = Self::compute_filename(&ffprobe);
+        let (_size_bytes, _size) = Self::compute_size(&ffprobe).unwrap();
+        Ok(())
+    }
+
     pub fn probe_media(path: &Path) -> Result<Ffprobe, io::Error> {
         if path.exists() {
             let output = Command::new("ffprobe")
@@ -120,39 +145,41 @@ impl MediaInfo {
         size
     }
 
-    pub fn find_video_stream(&self) -> Option<&Stream> {
-        let streams = &self.ffprobe.streams;
-        streams.iter().find(|stream| match stream {
+    pub fn find_video_stream(ffprobe: &Ffprobe) -> Option<&Stream> {
+        ffprobe.streams.iter().find(|stream| match stream {
             Stream::VideoStream(_) => true,
             Stream::AudioStream(_) => false,
         })
     }
 
-    pub fn find_audio_stream(&self) -> Option<&Stream> {
-        let streams = &self.ffprobe.streams;
-        streams.iter().find(|stream| match stream {
+    pub fn find_audio_stream(ffprobe: &Ffprobe) -> Option<&Stream> {
+        ffprobe.streams.iter().find(|stream| match stream {
             Stream::VideoStream(_) => false,
             Stream::AudioStream(_) => true,
         })
     }
 
-    pub fn compute_display_resolution(&mut self) {
-        let video_stream = self.find_video_stream().unwrap().clone();
+    pub fn compute_display_resolution(ffprobe: &Ffprobe) -> Option<Dimensions> {
+        let video_stream = Self::find_video_stream(ffprobe).unwrap().clone();
         if let Stream::VideoStream(video_stream) = video_stream {
-            self.sample_width = video_stream.width;
-            self.sample_height = video_stream.height;
+            let mut display_height: Option<u32>;
+            let mut display_width: Option<u32>;
+            let mut sample_height: Option<u32>;
+            let mut sample_width: Option<u32>;
+            sample_width = video_stream.width;
+            sample_height = video_stream.height;
             if let Some(rotation) = video_stream.tags.rotate {
                 // Swap width and height
                 if rotation == 90 {
-                    std::mem::swap(&mut self.sample_width, &mut self.sample_height)
+                    std::mem::swap(&mut sample_width, &mut sample_height);
                 }
             }
 
             let sample_aspect_ratio = video_stream.sample_aspect_ratio;
             debug!("sample_aspect_ratio {}", sample_aspect_ratio);
             if sample_aspect_ratio == "1:1" {
-                self.display_width = self.sample_width;
-                self.display_height = self.sample_height;
+                display_width = sample_width;
+                display_height = sample_height;
             } else {
                 let mut sample_split = sample_aspect_ratio.split(":").into_iter();
                 let sw = sample_split
@@ -168,49 +195,59 @@ impl MediaInfo {
                     .parse::<u32>()
                     .unwrap();
 
-                let new_sample_width = self.sample_width.unwrap() * sw / sh;
-                self.display_width = Some(new_sample_width);
-                self.display_height = self.sample_height;
+                let new_sample_width = sample_width.unwrap() * sw / sh;
+                display_width = Some(new_sample_width);
+                display_height = sample_height;
             }
 
-            if let Some(option_display_width) = self.display_width {
+            if let Some(option_display_width) = display_width {
                 if option_display_width == 0 {
-                    self.display_width = self.sample_width;
+                    display_width = sample_width;
                 }
             }
-            if let Some(option_display_height) = self.display_height {
+            if let Some(option_display_height) = display_height {
                 if option_display_height == 0 {
-                    self.display_height = self.sample_height;
+                    display_height = sample_height;
                 }
             }
-            debug!("self.display_width {:?}", self.display_width);
-            debug!("self.display_height {:?}", self.display_height);
+            return Some(Dimensions {
+                display_height: display_height,
+                display_width: display_width,
+                sample_height: sample_height,
+                sample_width: sample_width,
+            });
         }
+        None
     }
 
-    // Compute duration, size and retrieve filename
-    pub fn compute_format(&mut self) {
-        let video_stream = self.find_video_stream().unwrap();
+    pub fn compute_duration(ffprobe: &Ffprobe) -> Option<(f32, String)> {
+        let video_stream = Self::find_video_stream(ffprobe).unwrap();
         if let Stream::VideoStream(video_stream) = video_stream {
             let duration = match &video_stream.duration {
                 Some(duration) => duration,
-                None => &self.ffprobe.format.duration,
+                None => &ffprobe.format.duration,
             }
             .to_string();
             let duration_seconds = duration.parse::<f32>().unwrap();
-            self.duration_seconds = duration_seconds;
-            self.duration =
-                MediaInfo::pretty_duration(duration.parse::<f32>().unwrap(), true, true);
-
-            self.filename = Path::new(&self.ffprobe.format.filename)
-                .file_name()
-                .unwrap()
-                .to_string_lossy()
-                .into_owned();
-            self.size_bytes = self.ffprobe.format.size.parse().unwrap();
-            self.size =
-                MediaInfo::human_readable_size(self.ffprobe.format.size.parse::<f64>().unwrap());
+            let duration = MediaInfo::pretty_duration(duration.parse::<f32>().unwrap(), true, true);
+            return Some((duration_seconds, duration));
         }
+        None
+    }
+
+    // Compute duration, size and retrieve filename
+    pub fn compute_filename(ffprobe: &Ffprobe) -> String {
+        Path::new(&ffprobe.format.filename)
+            .file_name()
+            .unwrap()
+            .to_string_lossy()
+            .into_owned()
+    }
+
+    pub fn compute_size(ffprobe: &Ffprobe) -> Option<(f64, String)> {
+        let size_bytes = ffprobe.format.size.parse::<f64>().unwrap();
+        let size = MediaInfo::human_readable_size(size_bytes);
+        Some((size_bytes, size))
     }
 
     // Converts seconds to a human readable time format
@@ -311,7 +348,7 @@ impl MediaInfo {
     // Parse multiple media attributes
     pub fn parse_attributes(&mut self) {
         // video
-        let video_stream = self.find_video_stream().unwrap().clone();
+        let video_stream = Self::find_video_stream(&self.ffprobe).unwrap().clone();
         if let Stream::VideoStream(video_stream) = video_stream {
             self.video_codec = video_stream.codec_name;
             self.video_codec_long = video_stream.codec_long_name;
@@ -330,7 +367,7 @@ impl MediaInfo {
                 self.frame_rate = frame_rate;
             }
         }
-        if let Some(audio_stream) = self.find_audio_stream() {
+        if let Some(audio_stream) = Self::find_audio_stream(&self.ffprobe) {
             if let Stream::AudioStream(audio_stream) = audio_stream.clone() {
                 self.audio_codec = Some(audio_stream.codec_name);
                 self.audio_codec_long = audio_stream.codec_long_name;
@@ -669,7 +706,7 @@ pub struct Ffprobe {
     pub format: Format,
 }
 
-#[derive(Debug, StructOpt)]
+#[derive(Clone, Debug, StructOpt)]
 pub struct Interval {
     #[structopt(long = "interval")]
     pub interval: String,
@@ -692,7 +729,7 @@ impl FromStr for Interval {
 }
 
 arg_enum! {
-    #[derive(Debug, StructOpt)]
+    #[derive(Clone, Debug, StructOpt)]
     pub enum MetadataPosition {
         Top,
         Bottom,
@@ -700,7 +737,7 @@ arg_enum! {
 }
 
 arg_enum! {
-    #[derive(Debug, StructOpt)]
+    #[derive(Clone, Debug, StructOpt)]
     pub enum TimestampPosition {
         North,
         South,

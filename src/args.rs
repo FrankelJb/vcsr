@@ -5,7 +5,7 @@ pub fn application_args() -> Args {
     Args::from_args()
 }
 
-#[derive(Debug, StructOpt)]
+#[derive(Clone, Debug, StructOpt)]
 #[structopt(
     raw(setting = "structopt::clap::AppSettings::ColoredHelp"),
     rename_all = "kebab-case"
@@ -70,9 +70,9 @@ pub struct Args {
     #[structopt(long, default_value = "5", required = false)]
     pub grid_vertical_spacing: u32,
 
-    ///Output image format. Can be any format supported by pillow. For example 'png' or 'jpg'.
-    #[structopt(long, short, default_value = "jpg", required = false)]
-    pub format: String,
+    ///Output image format. Can be any format supported by image-rs. For example 'png' or 'jpg'.
+    #[structopt(long = "format", short = "f", default_value = "jpg", required = false)]
+    pub image_format: String,
 
     ///Ignore any error encountered while processing files recursively and continue to the next file.
     #[structopt(long)]
