@@ -179,7 +179,6 @@ impl MediaInfo {
             }
 
             let sample_aspect_ratio = video_stream.sample_aspect_ratio;
-            debug!("sample_aspect_ratio {}", sample_aspect_ratio);
             if sample_aspect_ratio == "1:1" {
                 display_width = sample_width;
                 display_height = sample_height;
@@ -437,6 +436,8 @@ impl MediaCapture {
         }
     }
 
+    /// Capture a frame at given time with given width and height
+    /// using ffmpeg.
     pub fn make_capture(&self, time: String, width: u32, height: u32, out_path: Option<String>) {
         let skip_delay = MediaInfo::pretty_duration(self.skip_delay_seconds, false, true);
         let out_path = match out_path {
@@ -469,7 +470,7 @@ impl MediaCapture {
             vec!["-ss".to_string(), skip_time, "-ss".to_string(), skip_delay]
         };
 
-        args.append(&mut vec!["-i".to_string(), self.path.to_string()]);
+        args.append(&mut vec!["-i".to_string(), self.path.to_owned()]);
         let width_x_height = format!("{}x{}", width, height);
         // args.append(&mut time_parts);
         args.append(&mut vec![
@@ -762,6 +763,7 @@ arg_enum! {
     pub enum MetadataPosition {
         Top,
         Bottom,
+        Hidden
     }
 }
 

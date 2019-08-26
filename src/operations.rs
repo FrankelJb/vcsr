@@ -1,9 +1,11 @@
 use crate::args::Args;
 use crate::constants::*;
-use crate::models::TimestampPosition;
 use crate::models::*;
+use crate::models::{MetadataPosition, TimestampPosition};
 
-use image::{ImageBuffer, ImageRgba8, Rgba, RgbaImage};
+use conv::ValueInto;
+use image::{GenericImage, ImageBuffer, Pixel, Rgba, RgbaImage};
+use imageproc::definitions::Clamp;
 use imageproc::drawing::{draw_filled_rect_mut, draw_text_mut};
 use imageproc::rect::Rect;
 use rand::distributions::Alphanumeric;
@@ -194,15 +196,15 @@ pub fn select_colour_variety(frames: &mut Vec<Frame>, num_selected: u32) -> Vec<
 }
 
 pub fn max_line_length(
-    media_info_filename: String,
-    metadata_font: Font,
+    media_info_filename: &str,
+    metadata_font: &Font,
     metadata_font_size: f32,
     header_margin: u32,
     width: u32,
     text: Option<&str>,
 ) -> usize {
     let text = match text {
-        Some(text) => text.to_string(),
+        Some(text) => text,
         None => media_info_filename,
     };
 
@@ -237,6 +239,7 @@ pub fn prepare_metadata_text_lines(
     media_attributes: &MediaAttributes,
     dimensions: &Dimensions,
     header_font: &Font,
+    header_font_size: f32,
     header_margin: u32,
     width: u32,
 ) -> Vec<String> {
@@ -260,14 +263,13 @@ pub fn prepare_metadata_text_lines(
         .map(|s| if s.len() > 0 { s.trim() } else { s });
     for line in template_lines {
         let max_metadata_line_length = max_line_length(
-            media_attributes.filename.clone(),
-            header_font.clone(),
-            16.0,
+            &media_attributes.filename,
+            &header_font,
+            header_font_size,
             header_margin,
             width,
             Some(line),
         );
-        println!("max_metadata_line_length {}", max_metadata_line_length);
         header_lines.push(fill(line, max_metadata_line_length));
     }
     header_lines
@@ -334,6 +336,38 @@ pub fn load_font<'a>(
     }
 }
 
+pub fn draw_metadata<'a, I>(
+    img: &'a mut I,
+    args: &Args,
+    header_line_height: u32,
+    header_lines: Vec<String>,
+    header_font_colour: I::Pixel,
+    start_height: u32,
+    header_font: &'a Font<'a>,
+) -> u32
+where
+    I: GenericImage,
+    <I::Pixel as Pixel>::Subpixel: ValueInto<f32> + Clamp<f32>,
+{
+    let mut h = start_height;
+    for line in header_lines {
+        draw_text_mut(
+            img,
+            header_font_colour,
+            args.metadata_horizontal_margin,
+            h,
+            Scale::uniform(args.metadata_font_size),
+            &header_font,
+            &line,
+        );
+        h += header_line_height;
+    }
+    h
+}
+
+/// Creates a video contact sheet with the media information in a header
+/// and the selected frames arranged on a mxn grid with optional
+/// timestamps
 pub fn compose_contact_sheet(
     media_attributes: &MediaAttributes,
     frames: &mut Vec<Frame>,
@@ -360,6 +394,7 @@ pub fn compose_contact_sheet(
         &media_attributes,
         &dimensions,
         &header_font,
+        args.metadata_font_size,
         args.metadata_horizontal_margin,
         width,
     );
@@ -367,9 +402,9 @@ pub fn compose_contact_sheet(
     let line_spacing_coefficient = 1.2;
     let header_line_height = (args.metadata_font_size * line_spacing_coefficient) as u32;
     let mut header_height =
-        2 * args.metadata_margin + header_lines.len() as u32 + header_line_height;
+        2 * args.metadata_margin + header_lines.len() as u32 * header_line_height;
 
-    if args.metadata_position.is_none() {
+    if let MetadataPosition::Hidden = args.metadata_position {
         header_height = 0;
     }
 
@@ -379,21 +414,35 @@ pub fn compose_contact_sheet(
     let hex_background = decode_hex(&args.background_colour);
     let mut image = RgbaImage::from_pixel(final_image_width, final_image_height, hex_background);
 
+    let draw_metadata_helper = |img: &mut ImageBuffer<Rgba<u8>, Vec<u8>>,
+                                args: &Args,
+                                header_line_height: u32,
+                                header_lines: Vec<String>,
+                                start_height: u32,
+                                header_font: &Font| {
+        draw_metadata(
+            img,
+            &args,
+            header_line_height,
+            header_lines,
+            decode_hex(&args.metadata_font_colour),
+            start_height,
+            &header_font,
+        )
+    };
+
     let mut h = 0;
 
-    if let Some(MetadataPosition::Top) = args.metadata_position {
-        h = args.metadata_vertical_margin;
-        for line in header_lines {
-            draw_text_mut(
-                &mut image,
-                decode_hex(&args.metadata_font_colour),
-                args.metadata_horizontal_margin,
-                h,
-                Scale { x: 16.0, y: 16.0 },
-                &header_font,
-                &line,
-            );
-            h += header_line_height;
+    match args.metadata_position {
+        MetadataPosition::Top => {
+            h = draw_metadata_helper(&mut image, &args,  header_line_height, header_lines, h, &header_font);
+        }
+        MetadataPosition::Bottom => {
+            h -= args.grid_vertical_spacing;
+            h = draw_metadata_helper(&mut image, &args,  header_line_height, header_lines, h, &header_font);
+        }
+        MetadataPosition::Hidden => {
+            debug!("Metadata position is hidden, not drawing metadata");
         }
     }
 
@@ -496,12 +545,6 @@ pub fn compose_contact_sheet(
     }
 
     image
-}
-
-fn save_image(image: ImageBuffer<Rgba<u8>, Vec<u8>>, output_path: &str) -> std::io::Result<()> {
-    ImageRgba8(image).to_rgb().save(output_path)?;
-    // image.save(output_path)?;
-    Ok(())
 }
 
 fn decode_hex(s: &str) -> Rgba<u8> {

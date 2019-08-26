@@ -99,7 +99,7 @@ pub struct Args {
     pub metadata_font_colour: String,
 
     ///size of the font used for metadata
-    #[structopt(long, default_value = "12.0", required = false)]
+    #[structopt(long, default_value = "16.0", required = false)]
     pub metadata_font_size: f32,
 
     ///Horizontal margin (in pixels) in the metadata header.
@@ -115,10 +115,12 @@ pub struct Args {
         long,
         raw(
             possible_values = "&MetadataPosition::variants()",
-            case_insensitive = "true"
-        )
+            case_insensitive = "true",
+        ),
+        required = false,
+        default_value = "top"
     )]
-    pub metadata_position: Option<MetadataPosition>,
+    pub metadata_position: MetadataPosition,
 
     ///Vertical margin (in pixels) in the metadata header.
     #[structopt(long, default_value = "10", required = false)]

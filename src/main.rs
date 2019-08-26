@@ -155,7 +155,7 @@ fn process_file(dir_entry: DirEntry, args: &mut args::Args) -> Result<(), errors
         .media_attributes
         .ok_or_else(|| errors::CustomError::MediaError)?;
     let media_capture = models::MediaCapture::new(
-        file_name_str.to_string(),
+        dir_entry.path().to_string_lossy().to_owned().to_string(),
         args.accurate,
         args.accurate_delay_seconds,
         args.frame_type.clone(),
@@ -228,7 +228,7 @@ fn process_file(dir_entry: DirEntry, args: &mut args::Args) -> Result<(), errors
 
     // make sure num_selected isn't too large
     if args.interval.is_none() && args.manual_timestamps.is_empty() {
-        if args.num_selected.unwrap() > args.num_selected.unwrap() {
+        if args.num_selected.unwrap() > args.num_groups.unwrap() {
             args.num_groups = args.num_selected;
         }
 
@@ -237,7 +237,9 @@ fn process_file(dir_entry: DirEntry, args: &mut args::Args) -> Result<(), errors
         }
 
         // make sure num_samples is large enough
-        if args.num_samples.unwrap() < args.num_selected.unwrap() || args.num_samples.unwrap() < args.num_groups.unwrap() {
+        if args.num_samples.unwrap() < args.num_selected.unwrap()
+            || args.num_samples.unwrap() < args.num_groups.unwrap()
+        {
             args.num_samples = args.num_selected;
             args.num_groups = args.num_selected;
         }
@@ -247,55 +249,38 @@ fn process_file(dir_entry: DirEntry, args: &mut args::Args) -> Result<(), errors
         args.grid_horizontal_spacing = grid_spacing;
         args.grid_vertical_spacing = grid_spacing;
     }
-    
-    let (mut selected_frames, temp_frames) = operations::select_sharpest_images(&media_attributes, &media_capture, &args);
+
+    let (mut selected_frames, temp_frames) =
+        operations::select_sharpest_images(&media_attributes, &media_capture, &args);
 
     info!("Composing contact sheet");
 
     let image = operations::compose_contact_sheet(&media_attributes, &mut selected_frames, &args);
 
-    image.save("/tmp/image.jpg").unwrap();
+    image.save(output_path)?;
 
-    // // TODO: Handle results to main
-    // let ffprobe =
-    //     models::MediaInfo::probe_media(&Path::new(&args.filenames.first().unwrap())).unwrap();
-    // let mut media_info = models::MediaInfo {
-    //     ffprobe: ffprobe,
-    //     ..Default::default()
-    // };
-    // media_info.compute_display_resolution();
-    // media_info.compute_format();
-    // // info!("duration: {}", media_info.duration);
-    // media_info.parse_attributes();
-    // // info!("media_info: {:?}", media_info);
-    // let media_capture = models::MediaCapture::new(
-    //     args.filenames.first().unwrap().to_string(),
-    //     None,
-    //     None,
-    //     None,
-    // );
-    // media_capture.make_capture(
-    //     "00:02:45".to_string(),
-    //     media_info.display_width.unwrap() / 3,
-    //     media_info.display_height.unwrap() / 3,
-    //     None,
-    // );
-    // models::MediaCapture::compute_avg_colour("out.jpg");
+    if let Some(thumbnail_output_path) = &args.thumbnail_output_path {
+        if !Path::new(thumbnail_output_path).exists() {
+            std::fs::create_dir_all(thumbnail_output_path)?;
+        }
+        info!("Copying thumbnails to {}", thumbnail_output_path);
+        for (i, frame) in selected_frames.iter().enumerate() {
+            let thumbnail_file_extension = Path::new(&frame.filename).extension().unwrap();
+            let thumbnail_filename = format!(
+                "{}.{:0>4}.{}",
+                dir_entry.path().file_stem().unwrap().to_str().unwrap(),
+                i,
+                thumbnail_file_extension.to_str().unwrap()
+            );
+            let thumbnail_destination = Path::new(thumbnail_output_path).join(thumbnail_filename);
+            std::fs::copy(&frame.filename, thumbnail_destination)?;
+        }
+    }
 
-    // debug!(
-    //     "blurinness is {}",
-    //     models::MediaCapture::compute_blurrines("out.jpg")
-    // );
+    info!("Cleaning up temporary files");
+    for frame in temp_frames {
+        std::fs::remove_file(frame.filename)?;
+    }
 
-    // info!("{:?}", operations::timestamp_generator(&media_info, &args));
-    // let font = operations::load_font(&args, None, &constants::DEFAULT_TIMESTAMP_FONT);
-    // info!(
-    //     "{:?}",
-    //     operations::prepare_metadata_text_lines(&media_info, &font, 10, 1499)
-    // );
-
-    // let mut selected_frames =
-    //     operations::select_sharpest_images(&media_info, &media_capture, &args);
-    // operations::compose_contact_sheet(media_info, &mut selected_frames, &args);
     Ok(())
 }
