@@ -251,7 +251,7 @@ fn process_file(dir_entry: DirEntry, args: &mut args::Args) -> Result<(), errors
     }
 
     let (mut selected_frames, temp_frames) =
-        operations::select_sharpest_images(&media_attributes, &media_capture, &args);
+        operations::select_sharpest_images(&media_attributes, &media_capture, &args)?;
 
     info!("Composing contact sheet");
 

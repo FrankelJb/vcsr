@@ -1,5 +1,6 @@
 use crate::args::Args;
 use crate::constants::*;
+use crate::errors::CustomError;
 use crate::models::*;
 use crate::models::{MetadataPosition, TimestampPosition};
 
@@ -71,7 +72,7 @@ pub fn select_sharpest_images(
     media_attributes: &MediaAttributes,
     media_capture: &MediaCapture,
     args: &Args,
-) -> (Vec<Frame>, Vec<Frame>) {
+) -> Result<(Vec<Frame>, Vec<Frame>), CustomError> {
     let desired_size = grid_desired_size(
         &args.grid,
         &media_attributes.dimensions,
@@ -82,7 +83,7 @@ pub fn select_sharpest_images(
     let timestamps = if args.manual_timestamps.len() > 0 {
         args.manual_timestamps
             .iter()
-            .map(|ts| (MediaInfo::pretty_to_seconds(ts.to_string()), ts.to_string()))
+            .map(|ts| (MediaInfo::pretty_to_seconds(ts.to_string()).unwrap(), ts.to_string()))
             .collect()
     } else {
         timestamp_generator(media_attributes, &args)
@@ -94,7 +95,7 @@ pub fn select_sharpest_images(
                       height: u32,
                       suffix: &str,
                       args: &Args|
-     -> Frame {
+     -> Result<Frame, CustomError> {
         info!(
             "Starting task {}/{}",
             task_number,
@@ -106,22 +107,22 @@ pub fn select_sharpest_images(
         let filename = format!("tmp{}{}", rand_string, suffix);
         dir.push(&filename);
         let full_path = dir.to_string_lossy().into_owned();
-        media_capture.make_capture(ts_tuple.1, width, height, Some(full_path.clone()));
+        media_capture.make_capture(ts_tuple.1, width, height, Some(full_path.clone()))?;
         let mut blurriness = 1.0;
         let mut avg_colour = 0.0;
         if !args.fast {
             blurriness = MediaCapture::compute_blurrines(&full_path);
             avg_colour = MediaCapture::compute_avg_colour(&full_path);
         }
-        Frame {
+        Ok(Frame {
             filename: full_path,
             blurriness: blurriness,
             timestamp: ts_tuple.0,
             avg_colour: avg_colour,
-        }
+        })
     };
 
-    let mut blurs: Vec<Frame> = timestamps
+    let mut blurs: Result<Vec<Frame>, CustomError> = timestamps
         .into_par_iter()
         .enumerate()
         .map(|(i, timestamp_tuple)| {
@@ -134,7 +135,7 @@ pub fn select_sharpest_images(
                 args,
             )
         })
-        .collect();
+        .collect()?;
     &blurs.sort_by(|a, b| a.timestamp.partial_cmp(&b.timestamp).unwrap());
 
     let num_groups = args.num_groups.unwrap();
@@ -152,7 +153,7 @@ pub fn select_sharpest_images(
     };
 
     let selected_items = select_colour_variety(&mut selected_items, num_groups);
-    (selected_items, blurs)
+    Ok((selected_items, blurs))
 }
 
 pub fn select_colour_variety(frames: &mut Vec<Frame>, num_selected: u32) -> Vec<Frame> {

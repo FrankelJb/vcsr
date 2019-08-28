@@ -144,7 +144,6 @@ pub struct Args {
     #[structopt(long, short)]
     pub recursive: bool,
 
-    // TODO: num_samples logic
     ///number of samples
     #[structopt(long, short = "s", help = "number of samples")]
     pub num_samples: Option<u32>,
@@ -236,45 +235,3 @@ impl Args {
         Some(grid.x * grid.y)
     }
 }
-
-// impl Default for Args {
-//     fn default() -> Self {
-//         Args {
-//             background_colour: String::from(DEFAULT_BACKGROUND_COLOUR),
-//             capture_alpha: DEFAULT_CAPTURE_ALPHA,
-//             end_delay_percent: 7.0,
-//             fast: false,
-//             grid: DEFAULT_GRID_SPACING,
-//             grid_horizontal_spacing: DEFAULT_GRID_HORIZONTAL_SPACING,
-//             grid_vertical_spacing: DEFAULT_GRID_VERTICAL_SPACING,
-//             interval: None,
-//             filenames: vec![],
-//             manual_timestamps: vec![],
-//             metadata_font_colour: String::from(DEFAULT_METADATA_FONT_COLOUR),
-//             metadata_font_size: DEFAULT_METADATA_FONT_SIZE,
-//             metadata_horizontal_margin: DEFAULT_METADATA_HORIZONTAL_MARGIN,
-//             metadata_margin: DEFAULT_METADATA_MARGIN,
-//             metadata_position: Some(MetadataPosition::Top),
-//             metadata_vertical_margin: DEFAULT_METADATA_VERTICAL_MARGIN,
-//             // TODO: Change this to the right thing
-//             num_groups: 16,
-//             num_samples: Args::num_samples(DEFAULT_GRID_SPACING),
-//             num_selected: DEFAULT_GRID_SPACING.x * DEFAULT_GRID_SPACING.y,
-//             output_path: None
-//             start_delay_percent: 7.0,
-//             show_timestamp: true,
-//             timestamp_background_colour: String::from(DEFAULT_TIMESTAMP_BACKGROUND_COLOUR),
-//             timestamp_border_colour: String::from(DEFAULT_TIMESTAMP_BORDER_COLOUR),
-//             timestamp_border_mode: false,
-//             timestamp_border_size: DEFAULT_TIMESTAMP_BORDER_SIZE,
-//             timestamp_font_colour: String::from(DEFAULT_TIMESTAMP_FONT_COLOUR),
-//             timestamp_font_size: DEFAULT_TIMESTAMP_FONT_SIZE,
-//             timestamp_position: TimestampPosition::SE,
-//             timestamp_horizontal_margin: DEFAULT_TIMESTAMP_HORIZONTAL_MARGIN,
-//             timestamp_horizontal_padding: DEFAULT_TIMESTAMP_HORIZONTAL_PADDING,
-//             timestamp_vertical_margin: DEFAULT_TIMESTAMP_VERTICAL_MARGIN,
-//             timestamp_vertical_padding: DEFAULT_TIMESTAMP_VERTICAL_PADDING,
-//             vcs_width: DEFAULT_CONTACT_SHEET_WIDTH,
-//         }
-//     }
-// }

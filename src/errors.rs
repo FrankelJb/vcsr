@@ -1,7 +1,7 @@
 use std::error::Error;
 use std::fmt;
 use std::io;
-use std::num::ParseIntError;
+use std::num::{ParseFloatError, ParseIntError};
 
 #[derive(Debug, Clone)]
 pub struct ArgumentError {
@@ -27,6 +27,7 @@ pub enum CustomError {
     ArgumentError(ArgumentError),
     GridShape,
     IntError(ParseIntError),
+    FloatError(ParseFloatError),
     Io(io::Error),
     MediaError,
     VideoStreamError,
@@ -38,6 +39,7 @@ impl fmt::Display for CustomError {
         match *self {
             CustomError::ArgumentError(ref cause) => write!(f, "Arguments are invalid. {}", cause),
             CustomError::GridShape => write!(f, "Grid must be of the form mxn, where m is the number of columns and n is the number of rows."),
+            CustomError::FloatError(ref cause) => write!(f, "Parse Float Error: {}", cause),
             CustomError::IntError(ref cause) => write!(f, "Parse Int Error: {}", cause),
             CustomError::Io(ref cause) => write!(f, "IO Error: {}", cause),
             CustomError::MediaError => write!(f, "Could not find all media attributes."),
@@ -52,6 +54,7 @@ impl Error for CustomError {
         match *self {
             CustomError::ArgumentError(ref cause) => &cause.cause,
             CustomError::GridShape => "Cannot create a grid with those dimensions",
+            CustomError::FloatError(ref cause) => cause.description(),
             CustomError::IntError(ref cause) => cause.description(),
             CustomError::Io(ref cause) => cause.description(),
             CustomError::MediaError => "possibly corrupt media",
@@ -63,11 +66,18 @@ impl Error for CustomError {
         match *self {
             CustomError::ArgumentError(ref cause) => Some(cause),
             CustomError::GridShape => None,
+            CustomError::FloatError(ref cause) => Some(cause),
             CustomError::IntError(ref cause) => Some(cause),
             CustomError::Io(ref cause) => Some(cause),
             CustomError::MediaError => None,
             CustomError::VideoStreamError => None,
         }
+    }
+}
+
+impl From<ParseFloatError> for CustomError {
+    fn from(error: ParseFloatError) -> Self {
+        CustomError::FloatError(error)
     }
 }
 

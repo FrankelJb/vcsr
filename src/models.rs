@@ -287,13 +287,13 @@ impl MediaInfo {
         duration
     }
 
-    pub fn pretty_to_seconds(pretty_duration: String) -> f32 {
+    pub fn pretty_to_seconds(pretty_duration: String) -> Result<f32, CustomError> {
         // TODO: Handle this result
         let millis_split: Vec<&str> = pretty_duration.split(".").collect();
         let mut millis = 0.0;
         let left;
         if millis_split.len() == 2 {
-            millis = millis_split[1].parse().unwrap();
+            millis = millis_split[1].parse()?;
             left = millis_split[0].to_string();
         } else {
             left = pretty_duration;
@@ -304,14 +304,14 @@ impl MediaInfo {
         let seconds;
         if left_split.len() < 3 {
             hours = 0.0;
-            minutes = left_split[0].parse::<f32>().unwrap();
-            seconds = left_split[1].parse::<f32>().unwrap();
+            minutes = left_split[0].parse::<f32>()?;
+            seconds = left_split[1].parse::<f32>()?;
         } else {
-            hours = left_split[0].parse::<f32>().unwrap();
-            minutes = left_split[1].parse::<f32>().unwrap();
-            seconds = left_split[2].parse::<f32>().unwrap();
+            hours = left_split[0].parse::<f32>()?;
+            minutes = left_split[1].parse::<f32>()?;
+            seconds = left_split[2].parse::<f32>()?;
         }
-        (millis / 1000.0) + seconds + minutes * 60.0 + hours * 3600.0
+        Ok((millis / 1000.0) + seconds + minutes * 60.0 + hours * 3600.0)
     }
 
     pub fn parse_duration(seconds: f32) -> Time {
@@ -438,7 +438,7 @@ impl MediaCapture {
 
     /// Capture a frame at given time with given width and height
     /// using ffmpeg.
-    pub fn make_capture(&self, time: String, width: u32, height: u32, out_path: Option<String>) {
+    pub fn make_capture(&self, time: String, width: u32, height: u32, out_path: Option<String>) -> Result<(), CustomError> {
         let skip_delay = MediaInfo::pretty_duration(self.skip_delay_seconds, false, true);
         let out_path = match out_path {
             Some(o) => o,
@@ -459,7 +459,7 @@ impl MediaCapture {
             None => Vec::new(),
         };
 
-        let time_seconds = MediaInfo::pretty_to_seconds(time.to_owned());
+        let time_seconds = MediaInfo::pretty_to_seconds(time.to_owned())?;
         let skip_time_seconds = time_seconds - self.skip_delay_seconds;
         let skip_time = MediaInfo::pretty_duration(skip_time_seconds, false, true);
         // FIXME: These ss need to be in the correct order
@@ -487,8 +487,8 @@ impl MediaCapture {
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .args(args)
-            .output()
-            .expect("Handle this");
+            .output()?;
+        Ok(())
     }
 
     pub fn compute_avg_colour(image_path: &str) -> f32 {
