@@ -451,13 +451,13 @@ impl MediaCapture {
             None => "out.jpg",
         };
 
-
+        let frame_type_string: String;
         let mut select_args = match &self.frame_type {
             Some(frame_type) => {
                 if frame_type == "key" {
                     vec!["-vf", "select=key"]
                 } else {
-                    let frame_type_string = format!("\'select=eq(frame_type\\,{})\'", frame_type);
+                    frame_type_string = format!("\'select=eq(frame_type\\,{})\'", frame_type);
                     vec!["-vf", &frame_type_string]
                 }
             }

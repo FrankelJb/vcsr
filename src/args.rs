@@ -20,7 +20,7 @@ pub struct Args {
     pub accurate_delay_seconds: Option<f32>,
 
     ///Color of the timestamp background rectangle in hexadecimal, for example AABBCC
-    #[structopt(long, default_value = "000000", required = false)]
+    #[structopt(long, default_value = "ffffff00", required = false)]
     pub background_colour: String,
 
     ///Make thumbnails of actual size. In other words, thumbnails will have the actual 1:1 size of the video resolution.
@@ -63,11 +63,11 @@ pub struct Args {
     pub grid_spacing: Option<u32>,
 
     ///number of pixels spacing captures horizontally
-    #[structopt(long, default_value = "5", required = false)]
+    #[structopt(long, default_value = "15", required = false)]
     pub grid_horizontal_spacing: u32,
 
     ///number of pixels spacing captures vertically
-    #[structopt(long, default_value = "5", required = false)]
+    #[structopt(long, default_value = "15", required = false)]
     pub grid_vertical_spacing: u32,
 
     ///Output image format. Can be any format supported by image-rs. For example 'png' or 'jpg'.
@@ -95,19 +95,23 @@ pub struct Args {
     pub metadata_font: String,
 
     ///Color of the metadata font in hexadecimal, for example AABBCC
-    #[structopt(long, default_value = "ffffff", required = false)]
+    #[structopt(long, default_value = "000000ff", required = false)]
     pub metadata_font_colour: String,
+    
+    ///Color of the metadata background in hexadecimal, for example AABBCC
+    #[structopt(long, default_value = "b0cd7b0a", required = false)]
+    pub metadata_background_colour: String,
 
     ///size of the font used for metadata
     #[structopt(long, default_value = "16.0", required = false)]
     pub metadata_font_size: f32,
 
     ///Horizontal margin (in pixels) in the metadata header.
-    #[structopt(long, default_value = "10", required = false)]
+    #[structopt(long, default_value = "15", required = false)]
     pub metadata_horizontal_margin: u32,
 
     ///Margin (in pixels) in the metadata header.
-    #[structopt(long, default_value = "10", required = false)]
+    #[structopt(long, default_value = "15", required = false)]
     pub metadata_margin: u32,
 
     ///Position of the metadata header.

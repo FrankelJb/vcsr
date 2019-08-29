@@ -340,16 +340,15 @@ pub fn draw_metadata<'a, I>(
     img: &'a mut I,
     args: &Args,
     header_line_height: u32,
-    header_lines: Vec<String>,
+    header_lines: &Vec<String>,
     header_font_colour: I::Pixel,
-    start_height: u32,
     header_font: &'a Font<'a>,
 ) -> u32
 where
     I: GenericImage,
     <I::Pixel as Pixel>::Subpixel: ValueInto<f32> + Clamp<f32>,
 {
-    let mut h = start_height;
+    let mut h = args.grid_vertical_spacing;
     for line in header_lines {
         draw_text_mut(
             img,
@@ -381,9 +380,9 @@ pub fn compose_contact_sheet(
         Some(args.grid_horizontal_spacing),
     );
     let width = args.grid.x * (desired_size.x + args.grid_horizontal_spacing)
-        - args.grid_horizontal_spacing;
+        + args.grid_horizontal_spacing;
     let height =
-        args.grid.y * (desired_size.y + args.grid_vertical_spacing) - args.grid_vertical_spacing;
+        args.grid.y * (desired_size.y + args.grid_vertical_spacing) + args.grid_vertical_spacing;
 
     let header_font = load_font(args, None, &DEFAULT_METADATA_FONT);
     let timestamp_font = load_font(args, None, &DEFAULT_TIMESTAMP_FONT);
@@ -417,8 +416,7 @@ pub fn compose_contact_sheet(
     let draw_metadata_helper = |img: &mut ImageBuffer<Rgba<u8>, Vec<u8>>,
                                 args: &Args,
                                 header_line_height: u32,
-                                header_lines: Vec<String>,
-                                start_height: u32,
+                                header_lines: &Vec<String>,
                                 header_font: &Font| {
         draw_metadata(
             img,
@@ -426,46 +424,33 @@ pub fn compose_contact_sheet(
             header_line_height,
             header_lines,
             decode_hex(&args.metadata_font_colour),
-            start_height,
             &header_font,
         )
     };
 
-    let mut h = 0;
-
-    match args.metadata_position {
-        MetadataPosition::Top => {
-            h = draw_metadata_helper(
-                &mut image,
-                &args,
-                header_line_height,
-                header_lines,
-                h,
-                &header_font,
-            );
-        }
-        MetadataPosition::Bottom => {
-            h -= args.grid_vertical_spacing;
-            h = draw_metadata_helper(
-                &mut image,
-                &args,
-                header_line_height,
-                header_lines,
-                h,
-                &header_font,
-            );
-        }
-        MetadataPosition::Hidden => {
-            debug!("Metadata position is hidden, not drawing metadata");
-        }
+    let mut metadata_image = RgbaImage::from_pixel(final_image_width, header_height, decode_hex(&args.metadata_background_colour));
+    let mut y = 0;
+    // TODO: don't draw if hidden
+    draw_metadata_helper(
+        &mut metadata_image,
+        &args,
+        header_line_height,
+        &header_lines,
+        &header_font,
+    );
+    if let MetadataPosition::Top = args.metadata_position {
+        y = header_height;
+        image::imageops::replace(&mut image, &mut metadata_image, 0, 0);
     }
 
-    let mut w = 0;
+    y += args.grid_vertical_spacing;
+
+    let mut x = args.grid_horizontal_spacing;
     frames.sort_by(|a, b| a.timestamp.partial_cmp(&b.timestamp).unwrap());
     for (i, frame) in frames.iter().enumerate() {
         let mut f = image::open(&Path::new(&frame.filename)).unwrap().to_rgba();
         putalpha(&mut f, args.capture_alpha);
-        image::imageops::replace(&mut image, &mut f, w, h);
+        image::imageops::replace(&mut image, &mut f, x, y);
 
         if args.show_timestamp {
             let timestamp_time = MediaInfo::pretty_duration(frame.timestamp, true, false);
@@ -486,8 +471,8 @@ pub fn compose_contact_sheet(
 
             let (upper_left, size) = compute_timestamp_position(
                 args,
-                w,
-                h,
+                x,
+                y,
                 text_size,
                 &desired_size,
                 rectangle_hpadding,
@@ -543,21 +528,33 @@ pub fn compose_contact_sheet(
                 &timestamp_text,
             );
         };
+        
+        for i in (x + desired_size.x)..(x + desired_size.x) + 5 {
+            let black_pixel = Rgba([0u8, 0u8, 0u8, (255 * i) as u8]);
+            for j in y..(y + desired_size.y) {
+                let p = image.get_pixel_mut(i, j);
+                p.blend(&black_pixel);
+            }
+        }
 
         // update x position for next frame
-        w += desired_size.x + args.grid_horizontal_spacing;
+        x += desired_size.x + args.grid_horizontal_spacing;
 
         // update y position
         if (i as u32 + 1) % args.grid.x == 0 {
-            h += desired_size.y + args.grid_vertical_spacing;
+            y += desired_size.y + args.grid_vertical_spacing;
         }
 
         // update x position
         if (i as u32 + 1) % args.grid.x == 0 {
-            w = 0;
+            x = args.grid_horizontal_spacing;
         }
     }
 
+    if let MetadataPosition::Bottom = args.metadata_position {
+        y += args.grid_vertical_spacing;
+        image::imageops::replace(&mut image, &mut metadata_image, 0, y);
+    }
     image
 }
 
