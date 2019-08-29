@@ -287,14 +287,14 @@ impl MediaInfo {
         duration
     }
 
-    pub fn pretty_to_seconds(pretty_duration: String) -> Result<f32, CustomError> {
+    pub fn pretty_to_seconds(pretty_duration: &str) -> Result<f32, CustomError> {
         // TODO: Handle this result
         let millis_split: Vec<&str> = pretty_duration.split(".").collect();
         let mut millis = 0.0;
         let left;
         if millis_split.len() == 2 {
             millis = millis_split[1].parse()?;
-            left = millis_split[0].to_string();
+            left = millis_split[0];
         } else {
             left = pretty_duration;
         }
@@ -438,49 +438,49 @@ impl MediaCapture {
 
     /// Capture a frame at given time with given width and height
     /// using ffmpeg.
-    pub fn make_capture(&self, time: String, width: u32, height: u32, out_path: Option<String>) -> Result<(), CustomError> {
+    pub fn make_capture(
+        &self,
+        time: &str,
+        width: u32,
+        height: u32,
+        out_path: Option<&str>,
+    ) -> Result<(), CustomError> {
         let skip_delay = MediaInfo::pretty_duration(self.skip_delay_seconds, false, true);
         let out_path = match out_path {
             Some(o) => o,
-            None => "out.jpg".to_string(),
+            None => "out.jpg",
         };
+
 
         let mut select_args = match &self.frame_type {
             Some(frame_type) => {
                 if frame_type == "key" {
-                    vec!["-vf".to_string(), "select=key".to_string()]
+                    vec!["-vf", "select=key"]
                 } else {
-                    vec![
-                        "-vf".to_string(),
-                        format!("\'select=eq(frame_type\\,{})\'", frame_type).to_string(),
-                    ]
+                    let frame_type_string = format!("\'select=eq(frame_type\\,{})\'", frame_type);
+                    vec!["-vf", &frame_type_string]
                 }
             }
             None => Vec::new(),
         };
 
-        let time_seconds = MediaInfo::pretty_to_seconds(time.to_owned())?;
+        let time_seconds = MediaInfo::pretty_to_seconds(time)?;
         let skip_time_seconds = time_seconds - self.skip_delay_seconds;
         let skip_time = MediaInfo::pretty_duration(skip_time_seconds, false, true);
         // FIXME: These ss need to be in the correct order
         let mut args = if !self.accurate {
             // || skip_time_seconds < 0.0 {
-            vec!["-ss".to_string(), time]
+            vec!["-ss", time]
         } else {
-            vec!["-ss".to_string(), skip_time, "-ss".to_string(), skip_delay]
+            vec!["-ss", &skip_time, "-ss", &skip_delay]
         };
 
-        args.append(&mut vec!["-i".to_string(), self.path.to_owned()]);
+        args.append(&mut vec!["-i", &self.path]);
         let width_x_height = format!("{}x{}", width, height);
         // args.append(&mut time_parts);
-        args.append(&mut vec![
-            "-vframes".to_string(),
-            "1".to_string(),
-            "-s".to_string(),
-            width_x_height,
-        ]);
+        args.append(&mut vec!["-vframes", "1", "-s", &width_x_height]);
         args.append(&mut select_args);
-        args.append(&mut vec!["-y".to_string(), out_path]);
+        args.append(&mut vec!["-y", out_path]);
 
         Command::new("ffmpeg")
             .stdin(Stdio::null())

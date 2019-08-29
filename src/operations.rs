@@ -48,7 +48,7 @@ pub fn total_delay_seconds(media_attributes: &MediaAttributes, args: &Args) -> f
     start_delay_seconds + end_delay_seconds
 }
 
-pub fn timestamp_generator(media_attributes: &MediaAttributes, args: &Args) -> Vec<(f32, String)> {
+pub fn timestamp_generator(media_attributes: &MediaAttributes, args: &Args) -> Vec<String> {
     let delay = total_delay_seconds(media_attributes, args);
     let capture_interval = match &args.interval {
         Some(interval) => interval.total_seconds(),
@@ -62,9 +62,10 @@ pub fn timestamp_generator(media_attributes: &MediaAttributes, args: &Args) -> V
     (0..args.num_samples.unwrap())
         .into_iter()
         .map(|_| {
-            time = time + capture_interval;
-            (time, MediaInfo::pretty_duration(time, false, true))
+            time += capture_interval;
+            time
         })
+        .map(|ts| MediaInfo::pretty_duration(ts, false, true))
         .collect()
 }
 
@@ -81,10 +82,7 @@ pub fn select_sharpest_images(
     );
 
     let timestamps = if args.manual_timestamps.len() > 0 {
-        args.manual_timestamps
-            .iter()
-            .map(|ts| (MediaInfo::pretty_to_seconds(ts.to_string()).unwrap(), ts.to_string()))
-            .collect()
+        args.manual_timestamps.clone()
     } else {
         timestamp_generator(media_attributes, &args)
     };
@@ -107,7 +105,7 @@ pub fn select_sharpest_images(
         let filename = format!("tmp{}{}", rand_string, suffix);
         dir.push(&filename);
         let full_path = dir.to_string_lossy().into_owned();
-        media_capture.make_capture(ts_tuple.1, width, height, Some(full_path.clone()))?;
+        media_capture.make_capture(&ts_tuple.1, width, height, Some(&full_path))?;
         let mut blurriness = 1.0;
         let mut avg_colour = 0.0;
         if !args.fast {
@@ -122,38 +120,39 @@ pub fn select_sharpest_images(
         })
     };
 
-    let mut blurs: Result<Vec<Frame>, CustomError> = timestamps
+    let blurs: Result<Vec<Frame>, CustomError> = timestamps
         .into_par_iter()
         .enumerate()
-        .map(|(i, timestamp_tuple)| {
+        .map(|(i, ts)| {
             do_capture(
                 i + 1,
-                timestamp_tuple,
+                (MediaInfo::pretty_to_seconds(&ts)?, ts),
                 desired_size.x,
                 desired_size.y,
                 ".jpg",
                 args,
             )
         })
-        .collect()?;
-    &blurs.sort_by(|a, b| a.timestamp.partial_cmp(&b.timestamp).unwrap());
+        .collect();
+    let mut time_sorted = blurs?;
+    &time_sorted.sort_by(|a, b| a.timestamp.partial_cmp(&b.timestamp).unwrap());
 
     let num_groups = args.num_groups.unwrap();
     let mut selected_items: Vec<Frame> = vec![];
     if num_groups > 1 {
-        let group_size = 1.max(blurs.len() as u32 / num_groups);
-        for chunk in blurs.chunks_mut(group_size as usize) {
+        let group_size = 1.max(time_sorted.len() as u32 / num_groups);
+        for chunk in time_sorted.chunks_mut(group_size as usize) {
             chunk.sort_by(|a, b| a.timestamp.partial_cmp(&b.timestamp).unwrap());
             if let Some(c) = chunk.last() {
                 selected_items.push(c.clone());
             }
         }
     } else {
-        selected_items = blurs.clone();
+        selected_items = time_sorted.clone();
     };
 
     let selected_items = select_colour_variety(&mut selected_items, num_groups);
-    Ok((selected_items, blurs))
+    Ok((selected_items, time_sorted))
 }
 
 pub fn select_colour_variety(frames: &mut Vec<Frame>, num_selected: u32) -> Vec<Frame> {
@@ -436,11 +435,25 @@ pub fn compose_contact_sheet(
 
     match args.metadata_position {
         MetadataPosition::Top => {
-            h = draw_metadata_helper(&mut image, &args,  header_line_height, header_lines, h, &header_font);
+            h = draw_metadata_helper(
+                &mut image,
+                &args,
+                header_line_height,
+                header_lines,
+                h,
+                &header_font,
+            );
         }
         MetadataPosition::Bottom => {
             h -= args.grid_vertical_spacing;
-            h = draw_metadata_helper(&mut image, &args,  header_line_height, header_lines, h, &header_font);
+            h = draw_metadata_helper(
+                &mut image,
+                &args,
+                header_line_height,
+                header_lines,
+                h,
+                &header_font,
+            );
         }
         MetadataPosition::Hidden => {
             debug!("Metadata position is hidden, not drawing metadata");
