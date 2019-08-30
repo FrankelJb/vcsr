@@ -108,8 +108,8 @@ pub fn select_sharpest_images(
         let mut blurriness = 1.0;
         let mut avg_colour = 0.0;
         if !args.fast {
-            blurriness = MediaCapture::compute_blurrines(&full_path);
-            avg_colour = MediaCapture::compute_avg_colour(&full_path);
+            blurriness = MediaCapture::compute_blurrines(&full_path)?;
+            avg_colour = MediaCapture::compute_avg_colour(&full_path)?;
         }
         Ok(Frame {
             filename: full_path,
@@ -243,7 +243,6 @@ pub fn prepare_metadata_text_lines(
     width: u32,
 ) -> Vec<String> {
     // TODO: template maybe
-    // TODO: font size needs to be set elsewhere
     let mut header_lines = vec![];
     let template = format!(
         r#"{filename}

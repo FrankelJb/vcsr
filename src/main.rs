@@ -2,6 +2,7 @@
 
 extern crate clap;
 extern crate env_logger;
+extern crate exitcode;
 extern crate image;
 #[macro_use]
 extern crate log;
@@ -21,6 +22,7 @@ mod operations;
 use std::ffi::OsStr;
 use std::io;
 use std::path::Path;
+use std::process::{Command, Stdio};
 use std::{env, error::Error};
 use walkdir::{DirEntry, WalkDir};
 
@@ -43,8 +45,18 @@ use walkdir::{DirEntry, WalkDir};
 // }
 
 fn main() {
-    // TODO: Check that ffprobe is installed
-    // println!("{}", models::MediaInfo::human_readable_size(2854871.0));
+    match Command::new("ffmpeg")
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .output()
+    {
+        Ok(_) => info!("ffmpeg installed. Continuing."),
+        Err(_) => {
+            eprintln!("ffmpeg not installed. Exiting.");
+            std::process::exit(exitcode::SOFTWARE)
+        }
+    };
 
     env::set_var("RUST_LOG", "vcsi=debug,info,warn");
     env_logger::init();
@@ -75,7 +87,10 @@ fn main() {
         {
             let mut current_args = args.clone();
             match process_file(entry, &mut current_args) {
-                Ok(_) => info!("Some success message"),
+                Ok(file_name) => {
+                    info!("contact sheet succesfully created at {}", file_name);
+                    std::process::exit(exitcode::OK);
+                }
                 Err(err) => {
                     error!("Error: {:?}", err.description());
                     std::process::exit(-1);
@@ -85,7 +100,7 @@ fn main() {
     }
 }
 
-fn process_file(dir_entry: DirEntry, args: &mut args::Args) -> Result<(), errors::CustomError> {
+fn process_file(dir_entry: DirEntry, args: &mut args::Args) -> Result<String, errors::CustomError> {
     let file_name_str = dir_entry.file_name().to_str().unwrap();
 
     if args.verbose {
@@ -95,7 +110,7 @@ fn process_file(dir_entry: DirEntry, args: &mut args::Args) -> Result<(), errors
     if !dir_entry.path().exists() {
         if args.ignore_errors {
             info!("File does not exist, skipping {}: ", file_name_str);
-            return Ok(());
+            return Ok(String::from(file_name_str));
         } else {
             return Err(errors::CustomError::Io(io::Error::new(
                 io::ErrorKind::NotFound,
@@ -120,17 +135,13 @@ fn process_file(dir_entry: DirEntry, args: &mut args::Args) -> Result<(), errors
 
     if args.no_overwrite {
         if Path::new(&output_path).exists() {
-            info!("contact sheet already exists, skipping {}", output_path);
-            return Ok(());
+            info!("contact sheet already exists, skipping {}", &output_path);
+            return Ok(output_path);
         }
     }
 
     info!("Processing {:?}", dir_entry.path());
 
-    info!(
-        "interval {:?}: manual: {:?}",
-        args.interval, args.manual_timestamps
-    );
     if args.interval.is_some() && !args.manual_timestamps.is_empty() {
         return Err(errors::CustomError::ArgumentError(errors::ArgumentError {
             cause: "Cannot use --interval and --manual at the same time.".to_string(),
@@ -257,7 +268,7 @@ fn process_file(dir_entry: DirEntry, args: &mut args::Args) -> Result<(), errors
 
     let image = operations::compose_contact_sheet(&media_attributes, &mut selected_frames, &args);
 
-    image.save(output_path)?;
+    image.save(&output_path)?;
 
     if let Some(thumbnail_output_path) = &args.thumbnail_output_path {
         if !Path::new(thumbnail_output_path).exists() {
@@ -282,5 +293,5 @@ fn process_file(dir_entry: DirEntry, args: &mut args::Args) -> Result<(), errors
         std::fs::remove_file(frame.filename)?;
     }
 
-    Ok(())
+    Ok(output_path)
 }

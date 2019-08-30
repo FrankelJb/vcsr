@@ -288,7 +288,6 @@ impl MediaInfo {
     }
 
     pub fn pretty_to_seconds(pretty_duration: &str) -> Result<f32, CustomError> {
-        // TODO: Handle this result
         let millis_split: Vec<&str> = pretty_duration.split(".").collect();
         let mut millis = 0.0;
         let left;
@@ -464,20 +463,23 @@ impl MediaCapture {
             None => Vec::new(),
         };
 
-        let time_seconds = MediaInfo::pretty_to_seconds(time)?;
-        let skip_time_seconds = time_seconds - self.skip_delay_seconds;
-        let skip_time = MediaInfo::pretty_duration(skip_time_seconds, false, true);
-        // FIXME: These ss need to be in the correct order
+        let time_seconds;
+        let skip_time_seconds;
+        let mut skip_time;
         let mut args = if !self.accurate {
-            // || skip_time_seconds < 0.0 {
-            vec!["-ss", time]
+            vec!["-ss", time, "-i", &self.path]
         } else {
-            vec!["-ss", &skip_time, "-ss", &skip_delay]
+            time_seconds = MediaInfo::pretty_to_seconds(time)?;
+            skip_time_seconds = time_seconds - self.skip_delay_seconds;
+            skip_time = MediaInfo::pretty_duration(skip_time_seconds, false, true);
+            if skip_time_seconds < 0.0 {
+                vec!["-ss", time, "-i", &self.path]
+            } else {
+                vec!["-ss", &skip_time, "-i", &self.path, "-ss", &skip_delay]
+            }
         };
 
-        args.append(&mut vec!["-i", &self.path]);
         let width_x_height = format!("{}x{}", width, height);
-        // args.append(&mut time_parts);
         args.append(&mut vec!["-vframes", "1", "-s", &width_x_height]);
         args.append(&mut select_args);
         args.append(&mut vec!["-y", out_path]);
@@ -491,8 +493,7 @@ impl MediaCapture {
         Ok(())
     }
 
-    pub fn compute_avg_colour(image_path: &str) -> f32 {
-        //TODO: Result
+    pub fn compute_avg_colour(image_path: &str) -> Result<f32, CustomError> {
         if Path::new(image_path).exists() {
             let image = image::open(image_path).unwrap().to_rgba();
             let rgbs: (f32, f32, f32) =
@@ -506,15 +507,16 @@ impl MediaCapture {
                         ),
                     });
             let size = image.width() as f32 * image.height() as f32;
-            (rgbs.0 / size + rgbs.1 / size + rgbs.2 / size) / 3.0
+            Ok((rgbs.0 / size + rgbs.1 / size + rgbs.2 / size) / 3.0)
         } else {
-            error!("image_path doesn't exist {}", image_path);
-            0.0
+            Err(CustomError::Io(io::Error::new(
+                io::ErrorKind::NotFound,
+                "capture file was not created",
+            )))
         }
     }
 
-    pub fn compute_blurrines(image_path: &str) -> f32 {
-        // TODO: Handle this result rather than return 0.0
+    pub fn compute_blurrines(image_path: &str) -> Result<f32, CustomError> {
         if Path::new(image_path).exists() {
             let f = std::fs::File::open(image_path).unwrap();
             drop(f);
@@ -545,12 +547,16 @@ impl MediaCapture {
             collected.dedup();
             let max_freq = MediaCapture::avg9x(collected, None);
             if max_freq > 0.0 {
-                return 1.0 / max_freq;
+                return Ok(1.0 / max_freq);
             } else {
-                return 1.0;
+                return Ok(1.0);
             }
+        } else {
+            Err(CustomError::Io(io::Error::new(
+                io::ErrorKind::NotFound,
+                "capture file was not created",
+            )))
         }
-        0.0
     }
 
     pub fn avg9x(matrix: Vec<f32>, percentage: Option<f32>) -> f32 {
