@@ -6,7 +6,7 @@ use crate::models::{MetadataPosition, TimestampPosition};
 
 use conv::ValueInto;
 use image::{GenericImage, ImageBuffer, Pixel, Rgba, RgbaImage};
-use imageproc::definitions::Clamp;
+use imageproc::definitions::{Clamp, Image};
 use imageproc::drawing::{draw_filled_rect_mut, draw_text_mut};
 use imageproc::rect::Rect;
 use rand::distributions::Alphanumeric;
@@ -17,7 +17,7 @@ use std::env;
 use std::fs::File;
 use std::io::prelude::*;
 use std::path::Path;
-use textwrap::fill;
+use textwrap::wrap;
 
 pub fn grid_desired_size(
     grid: &Grid,
@@ -99,7 +99,6 @@ pub fn select_sharpest_images(
             task_number,
             args.num_samples.unwrap()
         );
-        // TODO: lots to handle
         let rand_string: String = thread_rng().sample_iter(&Alphanumeric).take(7).collect();
         let mut dir = env::temp_dir();
         let filename = format!("tmp{}{}", rand_string, suffix);
@@ -262,15 +261,20 @@ pub fn prepare_metadata_text_lines(
         .split("\n")
         .map(|s| if s.len() > 0 { s.trim() } else { s });
     for line in template_lines {
-        let max_metadata_line_length = max_line_length(
-            &media_attributes.filename,
-            &header_font,
-            header_font_size,
-            header_margin,
-            width,
-            Some(line),
-        );
-        header_lines.push(fill(line, max_metadata_line_length));
+        let mut remaining_chars = line;
+        while remaining_chars.len() > 0 {
+            let max_metadata_line_length = max_line_length(
+                &media_attributes.filename,
+                &header_font,
+                header_font_size,
+                header_margin,
+                width,
+                Some(line),
+            );
+            let wraps = wrap(remaining_chars, max_metadata_line_length);
+            header_lines.push(String::from(wraps[0].clone()));
+            remaining_chars = &remaining_chars[wraps[0].len()..];
+        }
     }
     header_lines
 }
@@ -342,6 +346,7 @@ pub fn draw_metadata<'a, I>(
     header_line_height: u32,
     header_lines: &Vec<String>,
     header_font_colour: I::Pixel,
+    header_font_size: f32,
     header_font: &'a Font<'a>,
 ) -> u32
 where
@@ -355,7 +360,7 @@ where
             header_font_colour,
             args.metadata_horizontal_margin,
             h,
-            Scale::uniform(args.metadata_font_size),
+            Scale::uniform(header_font_size),
             &header_font,
             &line,
         );
@@ -413,43 +418,48 @@ pub fn compose_contact_sheet(
     let hex_background = decode_hex(&args.background_colour);
     let mut image = RgbaImage::from_pixel(final_image_width, final_image_height, hex_background);
 
-    let draw_metadata_helper = |img: &mut ImageBuffer<Rgba<u8>, Vec<u8>>,
-                                args: &Args,
-                                header_line_height: u32,
-                                header_lines: &Vec<String>,
-                                header_font: &Font| {
-        draw_metadata(
-            img,
-            &args,
-            header_line_height,
-            header_lines,
-            decode_hex(&args.metadata_font_colour),
-            &header_font,
-        )
-    };
+    let mut metadata_image = RgbaImage::from_pixel(
+        final_image_width,
+        header_height,
+        decode_hex(&args.metadata_background_colour),
+    );
 
-    let mut metadata_image = RgbaImage::from_pixel(final_image_width, header_height, decode_hex(&args.metadata_background_colour));
     let mut y = 0;
+
     // TODO: don't draw if hidden
-    draw_metadata_helper(
+    draw_metadata(
         &mut metadata_image,
         &args,
         header_line_height,
         &header_lines,
+        decode_hex(&args.metadata_font_colour),
+        args.metadata_font_size,
         &header_font,
     );
+
     if let MetadataPosition::Top = args.metadata_position {
         y = header_height;
         image::imageops::replace(&mut image, &mut metadata_image, 0, 0);
     }
 
+    let mut x = args.grid_horizontal_spacing;
     y += args.grid_vertical_spacing;
 
-    let mut x = args.grid_horizontal_spacing;
+    let mut blurred_grey_image = if args.no_shadow {
+        RgbaImage::from_pixel(
+            desired_size.x + args.grid_horizontal_spacing,
+            desired_size.y + args.grid_vertical_spacing,
+            decode_hex("ffffff00"),
+        )
+    } else {
+        drop_shadow(&args, &desired_size)
+    };
     frames.sort_by(|a, b| a.timestamp.partial_cmp(&b.timestamp).unwrap());
     for (i, frame) in frames.iter().enumerate() {
         let mut f = image::open(&Path::new(&frame.filename)).unwrap().to_rgba();
         putalpha(&mut f, args.capture_alpha);
+
+        image::imageops::replace(&mut image, &mut blurred_grey_image, x, y);
         image::imageops::replace(&mut image, &mut f, x, y);
 
         if args.show_timestamp {
@@ -528,14 +538,6 @@ pub fn compose_contact_sheet(
                 &timestamp_text,
             );
         };
-        
-        for i in (x + desired_size.x)..(x + desired_size.x) + 5 {
-            let black_pixel = Rgba([0u8, 0u8, 0u8, (255 * i) as u8]);
-            for j in y..(y + desired_size.y) {
-                let p = image.get_pixel_mut(i, j);
-                p.blend(&black_pixel);
-            }
-        }
 
         // update x position for next frame
         x += desired_size.x + args.grid_horizontal_spacing;
@@ -603,4 +605,39 @@ fn get_text_size(font: &Font, scale: Scale, text: &str) -> (u32, u32) {
         (max_x - min_x) as u32
     };
     (glyphs_width, glyphs_height)
+}
+
+fn drop_shadow(args: &Args, desired_size: &Grid) -> Image<Rgba<u8>> {
+    let mut grey_image = RgbaImage::from_pixel(
+        desired_size.x + args.grid_horizontal_spacing,
+        desired_size.y + args.grid_vertical_spacing,
+        decode_hex("aaaaaa00"),
+    );
+    let offset = 10;
+    let white = decode_hex("ffffffff");
+    let coords = vec![
+        (0, 0, offset, desired_size.y + args.grid_vertical_spacing),
+        (0, 0, desired_size.x + args.grid_horizontal_spacing, offset),
+        (
+            desired_size.x + args.grid_horizontal_spacing - offset,
+            0,
+            offset,
+            desired_size.y + args.grid_vertical_spacing,
+        ),
+        (
+            0,
+            desired_size.y + args.grid_vertical_spacing - offset,
+            desired_size.x + args.grid_horizontal_spacing,
+            offset,
+        ),
+    ];
+    for (rx, ry, rw, rh) in coords {
+        imageproc::drawing::draw_filled_rect_mut(
+            &mut grey_image,
+            Rect::at(rx as i32, ry as i32).of_size(rw, rh),
+            white,
+        );
+    }
+
+    imageproc::filter::gaussian_blur_f32(&grey_image, 3.0)
 }

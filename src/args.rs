@@ -97,7 +97,6 @@ pub struct Args {
     ///Color of the metadata font in hexadecimal, for example AABBCC
     #[structopt(long, default_value = "000000ff", required = false)]
     pub metadata_font_colour: String,
-    
     ///Color of the metadata background in hexadecimal, for example AABBCC
     #[structopt(long, default_value = "b0cd7b0a", required = false)]
     pub metadata_background_colour: String,
@@ -149,8 +148,12 @@ pub struct Args {
     pub recursive: bool,
 
     ///number of samples
-    #[structopt(long, short = "s", help = "number of samples")]
+    #[structopt(long, short = "s")]
     pub num_samples: Option<u32>,
+
+    /// show dropshadow on frames
+    #[structopt(long)]
+    pub no_shadow: bool,
 
     ///do not capture frames in the first n percent of total time
     #[structopt(long, default_value = "7", required = false)]
