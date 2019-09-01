@@ -1,22 +1,22 @@
 use crate::args::Args;
 use crate::constants::*;
 use crate::errors::CustomError;
-use crate::models::*;
-use crate::models::{MetadataPosition, TimestampPosition};
+use crate::models::{
+    Dimensions, Frame, Grid, MediaAttributes, MediaCapture, MediaInfo, MetadataPosition,
+    TimestampPosition,
+};
 
 use conv::ValueInto;
 use image::{GenericImage, ImageBuffer, Pixel, Rgba, RgbaImage};
-use imageproc::definitions::{Clamp, Image};
-use imageproc::drawing::{draw_filled_rect_mut, draw_text_mut};
-use imageproc::rect::Rect;
-use rand::distributions::Alphanumeric;
-use rand::{thread_rng, Rng};
+use imageproc::{
+    definitions::{Clamp, Image},
+    drawing::draw_text_mut,
+    rect::Rect,
+};
+use rand::{distributions::Alphanumeric, thread_rng, Rng};
 use rayon::prelude::*;
 use rusttype::{point, Font, FontCollection, Point, PositionedGlyph, Scale};
-use std::env;
-use std::fs::File;
-use std::io::prelude::*;
-use std::path::Path;
+use std::{env, fs::File, io::prelude::*, path::Path};
 use textwrap::wrap;
 
 pub fn grid_desired_size(
@@ -459,21 +459,15 @@ pub fn compose_contact_sheet(
     let mut x = args.grid_horizontal_spacing;
     y += args.grid_vertical_spacing;
 
-    let mut blurred_grey_image = if args.no_shadow {
-        RgbaImage::from_pixel(
-            desired_size.x + args.grid_horizontal_spacing,
-            desired_size.y + args.grid_vertical_spacing,
-            decode_hex("ffffff00"),
-        )
-    } else {
-        drop_shadow(&args, &desired_size)
-    };
+    let mut blurred_grey_image = drop_shadow(&args, &desired_size);
     frames.sort_by(|a, b| a.timestamp.partial_cmp(&b.timestamp).unwrap());
     for (i, frame) in frames.iter().enumerate() {
         let mut f = image::open(&Path::new(&frame.filename)).unwrap().to_rgba();
         putalpha(&mut f, args.capture_alpha);
 
-        image::imageops::replace(&mut image, &mut blurred_grey_image, x, y);
+        if !args.no_shadow {
+            image::imageops::replace(&mut image, &mut blurred_grey_image, x + 5, y + 5);
+        }
         image::imageops::replace(&mut image, &mut f, x, y);
 
         if args.show_timestamp {
@@ -509,7 +503,7 @@ pub fn compose_contact_sheet(
                     &mut image,
                     Rect::at(upper_left.x as i32, upper_left.y as i32).of_size(size.x, size.y),
                     timestamp_border_colour,
-                    3.0
+                    3.0,
                 );
             } else {
                 let offset_factor = args.timestamp_border_size;
@@ -623,26 +617,27 @@ fn get_text_size(font: &Font, scale: Scale, text: &str) -> (u32, u32) {
 }
 
 fn drop_shadow(args: &Args, desired_size: &Grid) -> Image<Rgba<u8>> {
+    let shadow_width = 15;
     let mut grey_image = RgbaImage::from_pixel(
-        desired_size.x + args.grid_horizontal_spacing,
-        desired_size.y + args.grid_vertical_spacing,
-        decode_hex("aaaaaa00"),
+        desired_size.x + shadow_width,
+        desired_size.y + shadow_width,
+        decode_hex("44444400"),
     );
     let offset = 10;
-    let white = decode_hex("ffffffff");
-    let coords = vec![
-        (0, 0, offset, desired_size.y + args.grid_vertical_spacing),
-        (0, 0, desired_size.x + args.grid_horizontal_spacing, offset),
+    let background_colour = decode_hex(&args.background_colour);
+    let mut coords = vec![
+        (0, 0, offset, desired_size.y + shadow_width),
+        (0, 0, desired_size.x + shadow_width, offset),
         (
-            desired_size.x + args.grid_horizontal_spacing - offset,
+            desired_size.x + shadow_width - offset,
             0,
             offset,
-            desired_size.y + args.grid_vertical_spacing,
+            desired_size.y + shadow_width,
         ),
         (
             0,
-            desired_size.y + args.grid_vertical_spacing - offset,
-            desired_size.x + args.grid_horizontal_spacing,
+            desired_size.y + shadow_width - offset,
+            desired_size.x + shadow_width,
             offset,
         ),
     ];
@@ -650,11 +645,35 @@ fn drop_shadow(args: &Args, desired_size: &Grid) -> Image<Rgba<u8>> {
         imageproc::drawing::draw_filled_rect_mut(
             &mut grey_image,
             Rect::at(rx as i32, ry as i32).of_size(rw, rh),
-            white,
+            background_colour,
         );
     }
 
-    imageproc::filter::gaussian_blur_f32(&grey_image, 3.0)
+    grey_image = imageproc::filter::gaussian_blur_f32(&grey_image, 3.0);
+    coords = vec![
+        (0, 0, offset / 4, desired_size.y + shadow_width),
+        (0, 0, desired_size.x + shadow_width, offset / 4),
+        (
+            desired_size.x + shadow_width - offset / 4,
+            0,
+            offset / 4,
+            desired_size.y + shadow_width,
+        ),
+        (
+            0,
+            desired_size.y + shadow_width  - offset / 4,
+            desired_size.x + shadow_width,
+            offset / 4,
+        ),
+    ];
+    for (rx, ry, rw, rh) in coords {
+        imageproc::drawing::draw_filled_rect_mut(
+            &mut grey_image,
+            Rect::at(rx as i32, ry as i32).of_size(rw, rh),
+            background_colour,
+        );
+    }
+    grey_image
 }
 
 /// Draws a rectangle with corners rounded to radius.
@@ -664,7 +683,6 @@ where
     I: GenericImage,
     I::Pixel: 'static,
 {
-    
     if rect.width() < 2 * radius as u32 || rect.height() < 2 * radius as u32 {
         panic!("Radius cannot be greater than width or height");
     }
@@ -677,7 +695,7 @@ where
     let float_width = rect.width() as f32;
     let float_height = rect.height() as f32;
 
-    while i < float_width / 2.0  && j < float_height / 2.0 {
+    while i < float_width / 2.0 && j < float_height / 2.0 {
         // draw top from left to right
         imageproc::drawing::draw_line_segment_mut(
             image,
@@ -713,11 +731,37 @@ where
 
     let radius = radius as i32;
 
-    imageproc::drawing::draw_filled_circle_mut(image, (rect.left() + rect.width() as i32 / 2, rect.top() + rect.height() as i32 / 2), 1, colour);
-    imageproc::drawing::draw_filled_circle_mut(image, (rect.left() + radius, rect.top() + radius), radius, colour);
-    imageproc::drawing::draw_filled_circle_mut(image, (rect.right() - radius, rect.top() + radius), radius, colour);
-    imageproc::drawing::draw_filled_circle_mut(image, (rect.left() + radius, rect.bottom() - radius), radius, colour);
-    imageproc::drawing::draw_filled_circle_mut(image, (rect.right() - radius, rect.bottom() - radius), radius, colour);
-
-
+    imageproc::drawing::draw_filled_circle_mut(
+        image,
+        (
+            rect.left() + rect.width() as i32 / 2,
+            rect.top() + rect.height() as i32 / 2,
+        ),
+        1,
+        colour,
+    );
+    imageproc::drawing::draw_filled_circle_mut(
+        image,
+        (rect.left() + radius, rect.top() + radius),
+        radius,
+        colour,
+    );
+    imageproc::drawing::draw_filled_circle_mut(
+        image,
+        (rect.right() - radius, rect.top() + radius),
+        radius,
+        colour,
+    );
+    imageproc::drawing::draw_filled_circle_mut(
+        image,
+        (rect.left() + radius, rect.bottom() - radius),
+        radius,
+        colour,
+    );
+    imageproc::drawing::draw_filled_circle_mut(
+        image,
+        (rect.right() - radius, rect.bottom() - radius),
+        radius,
+        colour,
+    );
 }

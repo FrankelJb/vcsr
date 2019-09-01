@@ -1,4 +1,5 @@
 use crate::models::{Grid, Interval, MetadataPosition, TimestampPosition};
+use clap::AppSettings;
 use structopt::StructOpt;
 
 pub fn application_args() -> Args {
@@ -6,10 +7,7 @@ pub fn application_args() -> Args {
 }
 
 #[derive(Clone, Debug, StructOpt)]
-#[structopt(
-    raw(setting = "structopt::clap::AppSettings::ColoredHelp"),
-    rename_all = "kebab-case"
-)]
+#[structopt(global_settings(&[AppSettings::ColoredHelp]))]
 pub struct Args {
     ///Make accurate captures. This capture mode is way slower than the default one but it helps when capturing frames from HEVC videos.
     #[structopt(long, short)]
@@ -93,6 +91,7 @@ pub struct Args {
     ///Color of the metadata font in hexadecimal, for example AABBCC
     #[structopt(long, default_value = "000000ff", required = false)]
     pub metadata_font_colour: String,
+
     ///Color of the metadata background in hexadecimal, for example AABBCC
     #[structopt(long, default_value = "b0cd7b0a", required = false)]
     pub metadata_background_colour: String,
@@ -112,10 +111,8 @@ pub struct Args {
     ///Position of the metadata header.
     #[structopt(
         long,
-        raw(
-            possible_values = "&MetadataPosition::variants()",
-            case_insensitive = "true",
-        ),
+        possible_values = &MetadataPosition::variants(),
+        case_insensitive = true,
         required = false,
         default_value = "top"
     )]
@@ -129,10 +126,9 @@ pub struct Args {
     #[structopt(long)]
     pub no_overwrite: bool,
 
-    // TODO: move this to another struct
-    #[structopt(long)]
+    #[structopt(skip)]
     pub num_groups: Option<u32>,
-    #[structopt(long)]
+    #[structopt(skip)]
     pub num_selected: Option<u32>,
 
     ///save to output file
@@ -195,10 +191,8 @@ pub struct Args {
     #[structopt(
         long,
         short = "T",
-        raw(
-            possible_values = "&TimestampPosition::variants()",
-            case_insensitive = "true"
-        ),
+        possible_values = &TimestampPosition::variants(),
+        case_insensitive = true,
         default_value = "se",
         required = false
     )]

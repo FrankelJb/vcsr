@@ -18,12 +18,13 @@ mod constants;
 mod errors;
 mod models;
 mod operations;
-
-use std::ffi::OsStr;
-use std::io;
-use std::path::Path;
-use std::process::{Command, Stdio};
-use std::{env, error::Error};
+use std::{
+    ffi::OsStr,
+    io,
+    path::Path,
+    process::{Command, Stdio},
+    {env, error::Error},
+};
 use walkdir::{DirEntry, WalkDir};
 
 // impl Termination for () {
