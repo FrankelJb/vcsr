@@ -318,14 +318,8 @@ pub fn compute_timestamp_position(
     (upper_left, size)
 }
 
-pub fn load_font<'a>(
-    _args: &'a Args,
-    font_path: Option<&str>,
-    default_font_path: &str,
-) -> Font<'a> {
-    // TODO: default font can be included in repo
-    let fonts = font_path.unwrap_or(default_font_path);
-    let font_path = Path::new(&fonts);
+pub fn load_font<'a>(font_path_str: &str) -> Result<Font<'a>, CustomError> {
+    let font_path = Path::new(font_path_str);
     if font_path.exists() {
         let mut file = File::open(font_path).unwrap();
         let mut data = Vec::new();
@@ -333,9 +327,12 @@ pub fn load_font<'a>(
         FontCollection::from_bytes(data)
             .unwrap()
             .into_font()
-            .unwrap()
+            .map_err(|e| CustomError::RustTypeError(e))
     } else {
-        panic!("Cannot load font: {}", fonts);
+        Err(CustomError::Io(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            format!("file does not found {}", font_path_str),
+        )))
     }
 }
 
@@ -375,7 +372,7 @@ pub fn compose_contact_sheet(
     media_attributes: &MediaAttributes,
     frames: &mut Vec<Frame>,
     args: &Args,
-) -> ImageBuffer<Rgba<u8>, Vec<u8>> {
+) -> Result<ImageBuffer<Rgba<u8>, Vec<u8>>, CustomError> {
     let dimensions = &media_attributes.dimensions;
     let desired_size = grid_desired_size(
         &args.grid,
@@ -388,8 +385,26 @@ pub fn compose_contact_sheet(
     let height =
         args.grid.y * (desired_size.y + args.grid_vertical_spacing) + args.grid_vertical_spacing;
 
-    let header_font = load_font(args, None, &DEFAULT_METADATA_FONT);
-    let timestamp_font = load_font(args, None, &DEFAULT_TIMESTAMP_FONT);
+    let header_font = match &args.metadata_font {
+        Some(font_path_str) => load_font(&font_path_str)?,
+        None => {
+            let data = include_bytes!("../resources/Roboto-Bold.ttf").to_vec();
+            FontCollection::from_bytes(data)
+                .unwrap()
+                .into_font()
+                .map_err(|e| CustomError::RustTypeError(e))?
+        }
+    };
+    let timestamp_font = match &args.timestamp_font {
+        Some(font_path_str) => load_font(&font_path_str)?,
+        None => {
+            let data = include_bytes!("../resources/Roboto-Regular.ttf").to_vec();
+            FontCollection::from_bytes(data)
+                .unwrap()
+                .into_font()
+                .map_err(|e| CustomError::RustTypeError(e))?
+        }
+    };
     let timestamp_font_scale = Scale::uniform(args.timestamp_font_size);
     let timestamp_border_colour = decode_hex(&args.timestamp_border_colour);
 
@@ -490,10 +505,11 @@ pub fn compose_contact_sheet(
 
             if !args.timestamp_border_mode {
                 let timestamp_border_colour = decode_hex(&args.timestamp_border_colour);
-                draw_filled_rect_mut(
+                draw_filled_rounded_rect_mut(
                     &mut image,
                     Rect::at(upper_left.x as i32, upper_left.y as i32).of_size(size.x, size.y),
                     timestamp_border_colour,
+                    3.0
                 );
             } else {
                 let offset_factor = args.timestamp_border_size;
@@ -556,7 +572,7 @@ pub fn compose_contact_sheet(
         y += args.grid_vertical_spacing;
         image::imageops::replace(&mut image, &mut metadata_image, 0, y);
     }
-    image
+    Ok(image)
 }
 
 fn decode_hex(s: &str) -> Rgba<u8> {
@@ -639,4 +655,69 @@ fn drop_shadow(args: &Args, desired_size: &Grid) -> Image<Rgba<u8>> {
     }
 
     imageproc::filter::gaussian_blur_f32(&grey_image, 3.0)
+}
+
+/// Draws a rectangle with corners rounded to radius.
+/// Panics if 2 x radius is greater than width or height
+pub fn draw_filled_rounded_rect_mut<I>(image: &mut I, rect: Rect, colour: I::Pixel, radius: f32)
+where
+    I: GenericImage,
+    I::Pixel: 'static,
+{
+    
+    if rect.width() < 2 * radius as u32 || rect.height() < 2 * radius as u32 {
+        panic!("Radius cannot be greater than width or height");
+    }
+    let mut i = 0.0;
+    let mut j = 0.0;
+    let float_left = rect.left() as f32;
+    let float_right = rect.right() as f32;
+    let float_top = rect.top() as f32;
+    let float_bottom = rect.bottom() as f32;
+    let float_width = rect.width() as f32;
+    let float_height = rect.height() as f32;
+
+    while i < float_width / 2.0  && j < float_height / 2.0 {
+        // draw top from left to right
+        imageproc::drawing::draw_line_segment_mut(
+            image,
+            (float_left + radius, float_top + j),
+            (float_right - radius, float_top + j),
+            colour,
+        );
+        // draw right from top to bottom
+        imageproc::drawing::draw_line_segment_mut(
+            image,
+            (float_right - i, float_top + radius),
+            (float_right - i, float_bottom - radius),
+            colour,
+        );
+        // draw bottom from right to right
+        imageproc::drawing::draw_line_segment_mut(
+            image,
+            (float_left + radius, float_bottom - j),
+            (float_right - radius, float_bottom - j),
+            colour,
+        );
+        // draw left from top to bottom
+        imageproc::drawing::draw_line_segment_mut(
+            image,
+            (float_left + i, float_top + radius),
+            (float_left + i, float_bottom - radius),
+            colour,
+        );
+
+        j += 1.0;
+        i += 1.0;
+    }
+
+    let radius = radius as i32;
+
+    imageproc::drawing::draw_filled_circle_mut(image, (rect.left() + rect.width() as i32 / 2, rect.top() + rect.height() as i32 / 2), 1, colour);
+    imageproc::drawing::draw_filled_circle_mut(image, (rect.left() + radius, rect.top() + radius), radius, colour);
+    imageproc::drawing::draw_filled_circle_mut(image, (rect.right() - radius, rect.top() + radius), radius, colour);
+    imageproc::drawing::draw_filled_circle_mut(image, (rect.left() + radius, rect.bottom() - radius), radius, colour);
+    imageproc::drawing::draw_filled_circle_mut(image, (rect.right() - radius, rect.bottom() - radius), radius, colour);
+
+
 }

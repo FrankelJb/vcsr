@@ -87,12 +87,8 @@ pub struct Args {
     pub manual_timestamps: Vec<String>,
 
     ///Path to TTF font used for metadata
-    #[structopt(
-        long,
-        default_value = "/usr/share/fonts/TTF/DejaVuSans-Bold.ttf",
-        required = false
-    )]
-    pub metadata_font: String,
+    #[structopt(long)]
+    pub metadata_font: Option<String>,
 
     ///Color of the metadata font in hexadecimal, for example AABBCC
     #[structopt(long, default_value = "000000ff", required = false)]
@@ -102,7 +98,7 @@ pub struct Args {
     pub metadata_background_colour: String,
 
     ///size of the font used for metadata
-    #[structopt(long, default_value = "16.0", required = false)]
+    #[structopt(long, default_value = "32", required = false)]
     pub metadata_font_size: f32,
 
     ///Horizontal margin (in pixels) in the metadata header.
@@ -184,19 +180,15 @@ pub struct Args {
     pub timestamp_border_size: u32,
 
     ///Path to TTF font used for timestamps
-    #[structopt(
-        long,
-        default_value = "/usr/share/fonts/TTF/DejaVuSans.ttf",
-        required = false
-    )]
-    pub timestamp_font: String,
+    #[structopt(long)]
+    pub timestamp_font: Option<String>,
 
     ///Color of the timestamp font in hexadecimal, for example AABBCC
     #[structopt(long, default_value = "ffffff", required = false)]
     pub timestamp_font_colour: String,
 
     ///size of the font used for timestamps
-    #[structopt(long, default_value = "12", required = false)]
+    #[structopt(long, default_value = "24", required = false)]
     pub timestamp_font_size: f32,
 
     ///Timestamp position.

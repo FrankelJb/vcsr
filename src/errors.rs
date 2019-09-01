@@ -1,3 +1,4 @@
+use rusttype::Error as FontError;
 use std::error::Error;
 use std::fmt;
 use std::io;
@@ -30,6 +31,7 @@ pub enum CustomError {
     FloatError(ParseFloatError),
     Io(io::Error),
     MediaError,
+    RustTypeError(FontError),
     VideoStreamError,
 }
 
@@ -43,6 +45,7 @@ impl fmt::Display for CustomError {
             CustomError::IntError(ref cause) => write!(f, "Parse Int Error: {}", cause),
             CustomError::Io(ref cause) => write!(f, "IO Error: {}", cause),
             CustomError::MediaError => write!(f, "Could not find all media attributes."),
+            CustomError::RustTypeError(ref cause) => write!(f, "Rust Type Font Error: {}", cause),
             CustomError::VideoStreamError => write!(f, "The file does not contain a video stream.")
         }
     }
@@ -58,6 +61,7 @@ impl Error for CustomError {
             CustomError::IntError(ref cause) => cause.description(),
             CustomError::Io(ref cause) => cause.description(),
             CustomError::MediaError => "possibly corrupt media",
+            CustomError::RustTypeError(ref cause) => cause.description(),
             CustomError::VideoStreamError => "No video stream in file",
         }
     }
@@ -70,8 +74,15 @@ impl Error for CustomError {
             CustomError::IntError(ref cause) => Some(cause),
             CustomError::Io(ref cause) => Some(cause),
             CustomError::MediaError => None,
+            CustomError::RustTypeError(ref cause) => Some(cause),
             CustomError::VideoStreamError => None,
         }
+    }
+}
+
+impl From<io::Error> for CustomError {
+    fn from(error: io::Error) -> Self {
+        CustomError::Io(error)
     }
 }
 
@@ -87,8 +98,8 @@ impl From<ParseIntError> for CustomError {
     }
 }
 
-impl From<io::Error> for CustomError {
-    fn from(error: io::Error) -> Self {
-        CustomError::Io(error)
+impl From<FontError> for CustomError {
+    fn from(error: FontError) -> Self {
+        CustomError::RustTypeError(error)
     }
 }

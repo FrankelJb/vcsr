@@ -266,7 +266,7 @@ fn process_file(dir_entry: DirEntry, args: &mut args::Args) -> Result<String, er
 
     info!("Composing contact sheet");
 
-    let image = operations::compose_contact_sheet(&media_attributes, &mut selected_frames, &args);
+    let image = operations::compose_contact_sheet(&media_attributes, &mut selected_frames, &args)?;
 
     image.save(&output_path)?;
 
