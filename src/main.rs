@@ -47,7 +47,7 @@ use walkdir::{DirEntry, WalkDir};
 
 fn main() {
     env::set_var("RUST_LOG", "vcsr=debug,info,warn");
-    env_logger::init();
+    env_logger::builder().default_format_timestamp(false).init();
 
     match Command::new("ffmpeg")
         .stdin(Stdio::null())

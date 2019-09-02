@@ -6,9 +6,8 @@ use crate::models::{
     TimestampPosition,
 };
 
-use conv::ValueInto;
-use image::{GenericImage, ImageBuffer, Pixel, Rgba, RgbaImage};
-use imageproc::{definitions::Clamp, drawing::draw_text_mut, rect::Rect};
+use image::{GenericImage, ImageBuffer, Rgba, RgbaImage};
+use imageproc::{drawing::draw_text_mut, rect::Rect};
 use rand::{distributions::Alphanumeric, thread_rng, Rng};
 use rayon::prelude::*;
 use rusttype::{point, Font, FontCollection, Point, PositionedGlyph, Scale};

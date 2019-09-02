@@ -2,7 +2,8 @@ use crate::constants::*;
 use crate::errors::CustomError;
 use clap::arg_enum;
 use image;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
+use serde_json::{Value};
 use std::error::Error;
 use std::io;
 use std::path::Path;
@@ -114,8 +115,9 @@ impl MediaInfo {
                 .output()?;
 
             if let Ok(stdout) = str::from_utf8(&output.stdout) {
-                let v: Ffprobe = serde_json::from_str(stdout).unwrap();
-                Ok(v)
+                // TODO: Handle this result
+                let f: Ffprobe = serde_json::from_str(stdout).unwrap();
+                Ok(f)
             } else {
                 Err(CustomError::Io(io::Error::new(
                     io::ErrorKind::Other,
@@ -146,14 +148,14 @@ impl MediaInfo {
     pub fn find_video_stream(ffprobe: &Ffprobe) -> Option<&Stream> {
         ffprobe.streams.iter().find(|stream| match stream {
             Stream::VideoStream(_) => true,
-            Stream::AudioStream(_) => false,
+            _ => false,
         })
     }
 
     pub fn find_audio_stream(ffprobe: &Ffprobe) -> Option<&Stream> {
         ffprobe.streams.iter().find(|stream| match stream {
             Stream::VideoStream(_) => false,
-            Stream::AudioStream(_) => true,
+            _ => true,
         })
     }
 
@@ -585,7 +587,7 @@ pub struct Time {
     millis: f32,
 }
 
-#[derive(Clone, Default, Debug, Serialize, Deserialize)]
+#[derive(Clone, Default, Debug, Deserialize)]
 struct Disposition {
     attached_pic: u32,
     clean_effects: u32,
@@ -601,7 +603,7 @@ struct Disposition {
     visual_impaired: u32,
 }
 
-#[derive(Clone, Default, Debug, Serialize, Deserialize)]
+#[derive(Clone, Default, Debug, Deserialize)]
 #[serde(rename_all = "snake_case")]
 struct StreamTags {
     creation_time: Option<String>,
@@ -609,19 +611,36 @@ struct StreamTags {
     handler_name: Option<String>,
     language: Option<String>,
     rotate: Option<u32>,
+    #[serde(rename = "BPS-eng")]
+    bps_eng: String,
+    #[serde(rename = "DURATION-eng")]
+    duration_eng: String,
+    #[serde(rename = "NUMBER_OF_BYTES-eng")]
+    number_of_bytes_eng: String,
+    #[serde(rename = "NUMBER_OF_FRAMES-eng")]
+    number_of_frames_eng: String,
+    #[serde(rename = "_STATISTICS_TAGS-eng")]
+    statistics_tags_eng: String,
+    #[serde(rename = "_STATISTICS_WRITING_APP-eng")]
+    statistics_writing_app_eng: String,
+    #[serde(rename = "_STATISTICS_WRITING_DATE_UTC-eng")]
+    statistics_writing_date_utc_eng: String,
 }
 
-#[derive(Clone, Default, Debug, Serialize, Deserialize)]
+#[derive(Clone, Default, Debug, Deserialize)]
 pub struct GenericStream {}
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(untagged)]
+#[derive(Clone, Debug, Deserialize)]
+#[serde(tag = "codec_type")]
 pub enum Stream {
+    #[serde(rename = "video")]
     VideoStream(VideoStream),
+    #[serde(rename = "audio")]
     AudioStream(AudioStream),
+    OtherStream(OtherStream)
 }
 
-#[derive(Clone, Default, Debug, Serialize, Deserialize)]
+#[derive(Clone, Default, Debug, Deserialize)]
 pub struct VideoStream {
     avg_frame_rate: Option<String>,
     bit_rate: Option<String>,
@@ -642,6 +661,7 @@ pub struct VideoStream {
     display_aspect_ratio: Option<String>,
     display_height: Option<u32>,
     display_width: Option<u32>,
+    #[serde(skip)]
     disposition: Disposition,
     duration_ts: Option<i32>,
     duration: Option<String>,
@@ -665,7 +685,7 @@ pub struct VideoStream {
     width: Option<u32>,
 }
 
-#[derive(Clone, Default, Debug, Serialize, Deserialize)]
+#[derive(Clone, Default, Debug, Deserialize)]
 pub struct AudioStream {
     avg_frame_rate: Option<String>,
     bit_rate: Option<String>,
@@ -700,7 +720,27 @@ pub struct AudioStream {
     time_base: Option<String>,
 }
 
-#[derive(Clone, Default, Debug, Serialize, Deserialize)]
+#[derive(Clone, Default, Debug, Deserialize)]
+pub struct OtherStream {
+    index: u32,
+    codec_name: String,
+    codec_long_name: String,
+    codec_type: String,
+    codec_time_base: String,
+    codec_tag_string: String,
+    codec_tag: String,
+    r_frame_rate: String,
+    avg_frame_rate: String,
+    time_base: String,
+    start_pts: u32,
+    start_time: String,
+    duration_ts: Option<u32>,
+    duration: Option<String>,
+    disposition: Disposition,
+    tags: StreamTags,
+}
+
+#[derive(Clone, Default, Debug, Deserialize)]
 struct SideDataType {
     side_data_type: String,
 }
@@ -709,7 +749,7 @@ fn default_sample_aspect_ratio() -> String {
     "1:1".to_string()
 }
 
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, Deserialize)]
 pub struct Format {
     bit_rate: String,
     pub duration: String,
@@ -724,7 +764,7 @@ pub struct Format {
     tags: FormatTags,
 }
 
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, Deserialize)]
 struct FormatTags {
     creation_time: Option<String>,
     compatible_brands: Option<String>,
@@ -733,7 +773,7 @@ struct FormatTags {
     minor_version: Option<String>,
 }
 
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, Deserialize)]
 pub struct Ffprobe {
     streams: Vec<Stream>,
     pub format: Format,
