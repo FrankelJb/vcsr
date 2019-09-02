@@ -46,6 +46,9 @@ use walkdir::{DirEntry, WalkDir};
 // }
 
 fn main() {
+    env::set_var("RUST_LOG", "vcsr=debug,info,warn");
+    env_logger::init();
+
     match Command::new("ffmpeg")
         .stdin(Stdio::null())
         .stdout(Stdio::null())
@@ -58,10 +61,6 @@ fn main() {
             std::process::exit(exitcode::SOFTWARE)
         }
     };
-
-    env::set_var("RUST_LOG", "vcsi=debug,info,warn");
-    env_logger::init();
-
     let args = args::application_args();
     let mut walker: WalkDir;
 

@@ -18,7 +18,7 @@ pub struct Args {
     pub accurate_delay_seconds: Option<f32>,
 
     ///Color of the timestamp background rectangle in hexadecimal, for example AABBCC
-    #[structopt(long, default_value = "ffffff00", required = false)]
+    #[structopt(long, default_value = "ffffff30", required = false)]
     pub background_colour: String,
 
     ///Make thumbnails of actual size. In other words, thumbnails will have the actual 1:1 size of the video resolution.
@@ -171,6 +171,10 @@ pub struct Args {
     #[structopt(long)]
     pub timestamp_border_mode: bool,
 
+    ///Draw timestamp text with a border instead of the default rectangle.
+    #[structopt(long, default_value = "3.0")]
+    pub timestamp_border_radius: f32,
+
     ///Size of the timestamp border in pixels (used only with --timestamp-border-mode).
     #[structopt(long, default_value = "1", required = false)]
     pub timestamp_border_size: u32,
@@ -184,7 +188,7 @@ pub struct Args {
     pub timestamp_font_colour: String,
 
     ///size of the font used for timestamps
-    #[structopt(long, default_value = "24", required = false)]
+    #[structopt(long, default_value = "12", required = false)]
     pub timestamp_font_size: f32,
 
     ///Timestamp position.

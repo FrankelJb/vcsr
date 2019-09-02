@@ -114,11 +114,6 @@ impl MediaInfo {
                 .output()?;
 
             if let Ok(stdout) = str::from_utf8(&output.stdout) {
-                let r = serde_json::from_str::<Ffprobe>(stdout);
-                match r {
-                    Ok(_) => println!(""),
-                    Err(err) => error!("{}", err),
-                };
                 let v: Ffprobe = serde_json::from_str(stdout).unwrap();
                 Ok(v)
             } else {
@@ -484,12 +479,14 @@ impl MediaCapture {
         args.append(&mut select_args);
         args.append(&mut vec!["-y", out_path]);
 
-        Command::new("ffmpeg")
+        let output = Command::new("ffmpeg")
             .stdin(Stdio::null())
             .stdout(Stdio::null())
-            .stderr(Stdio::null())
             .args(args)
             .output()?;
+        if !output.status.success() {
+            error!("ffmpeg error: {}", str::from_utf8(&output.stderr).unwrap());
+        }
         Ok(())
     }
 

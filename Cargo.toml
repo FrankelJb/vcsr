@@ -1,5 +1,5 @@
 [package]
-name = "vcsi"
+name = "vcsr"
 version = "0.1.0"
 authors = ["Jonathan Frankel <frankel.jb@gmail.com>"]
 edition = "2018"

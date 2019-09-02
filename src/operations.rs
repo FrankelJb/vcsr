@@ -8,11 +8,7 @@ use crate::models::{
 
 use conv::ValueInto;
 use image::{GenericImage, ImageBuffer, Pixel, Rgba, RgbaImage};
-use imageproc::{
-    definitions::{Clamp, Image},
-    drawing::draw_text_mut,
-    rect::Rect,
-};
+use imageproc::{definitions::Clamp, drawing::draw_text_mut, rect::Rect};
 use rand::{distributions::Alphanumeric, thread_rng, Rng};
 use rayon::prelude::*;
 use rusttype::{point, Font, FontCollection, Point, PositionedGlyph, Scale};
@@ -128,7 +124,7 @@ pub fn select_sharpest_images(
                 (MediaInfo::pretty_to_seconds(&ts)?, ts),
                 desired_size.x,
                 desired_size.y,
-                ".jpg",
+                if args.fast { ".jpg" } else { ".png" },
                 args,
             )
         })
@@ -314,7 +310,6 @@ pub fn compute_timestamp_position(
         text_size.0 + 2 * rectangle_hpadding,
         text_size.1 + 2 * rectangle_vpadding,
     );
-
     (upper_left, size)
 }
 
@@ -336,27 +331,46 @@ pub fn load_font<'a>(font_path_str: &str) -> Result<Font<'a>, CustomError> {
     }
 }
 
-pub fn draw_metadata<'a, I>(
-    img: &'a mut I,
+pub fn draw_metadata<'a>(
+    img: &mut ImageBuffer<Rgba<u8>, Vec<u8>>,
     args: &Args,
     header_line_height: u32,
     header_lines: &Vec<String>,
-    header_font_colour: I::Pixel,
+    header_font_colour: Rgba<u8>,
     header_font_size: f32,
     header_font: &'a Font<'a>,
-) -> u32
-where
-    I: GenericImage,
-    <I::Pixel as Pixel>::Subpixel: ValueInto<f32> + Clamp<f32>,
-{
+) -> u32 {
     let mut h = args.grid_vertical_spacing;
+    let scale = Scale::uniform(header_font_size);
     for line in header_lines {
+        // Give the text a shadow because I just learned how
+        // to do this.
+
+        let text_size = get_text_size(&header_font, scale, line);
+        let mut shadow = RgbaImage::from_pixel(
+            text_size.0,
+            text_size.1,
+            decode_hex(&args.metadata_background_colour),
+        );
+        draw_text_mut(
+            &mut shadow,
+            Rgba([0, 0, 0, 255]),
+            0,
+            0,
+            scale,
+            &header_font,
+            line,
+        );
+
+        let blur = image::imageops::blur(&shadow, 1.0);
+
+        image::imageops::replace(img, &blur, args.metadata_horizontal_margin + 2, h + 2);
         draw_text_mut(
             img,
             header_font_colour,
             args.metadata_horizontal_margin,
             h,
-            Scale::uniform(header_font_size),
+            scale,
             &header_font,
             &line,
         );
@@ -440,7 +454,10 @@ pub fn compose_contact_sheet(
 
     let mut y = 0;
 
-    // TODO: don't draw if hidden
+    if let MetadataPosition::Top = args.metadata_position {
+        y = header_height;
+    }
+
     draw_metadata(
         &mut metadata_image,
         &args,
@@ -451,22 +468,30 @@ pub fn compose_contact_sheet(
         &header_font,
     );
 
-    if let MetadataPosition::Top = args.metadata_position {
-        y = header_height;
-        image::imageops::replace(&mut image, &mut metadata_image, 0, 0);
-    }
-
     let mut x = args.grid_horizontal_spacing;
     y += args.grid_vertical_spacing;
 
-    let mut blurred_grey_image = drop_shadow(&args, &desired_size);
+    let shadow_width = 10;
+    let mut rect = RgbaImage::from_pixel(
+        desired_size.x + shadow_width,
+        desired_size.y + shadow_width,
+        hex_background,
+    );
+    let black_pixel = Rgba([0, 0, 0, 0]);
+    imageproc::drawing::draw_filled_rect_mut(
+        &mut rect,
+        Rect::at(shadow_width as i32 / 2, shadow_width as i32 / 2)
+            .of_size(desired_size.x, desired_size.y),
+        black_pixel,
+    );
+    let mut blurred = image::imageops::blur(&mut rect, 3.0);
     frames.sort_by(|a, b| a.timestamp.partial_cmp(&b.timestamp).unwrap());
     for (i, frame) in frames.iter().enumerate() {
         let mut f = image::open(&Path::new(&frame.filename)).unwrap().to_rgba();
         putalpha(&mut f, args.capture_alpha);
 
         if !args.no_shadow {
-            image::imageops::replace(&mut image, &mut blurred_grey_image, x + 5, y + 5);
+            image::imageops::replace(&mut image, &mut blurred, x, y);
         }
         image::imageops::replace(&mut image, &mut f, x, y);
 
@@ -478,14 +503,14 @@ pub fn compose_contact_sheet(
             let _parsed_duraton = MediaInfo::parse_duration(media_attributes.duration_seconds);
 
             // TODO: Handlebar
-            let timestamp_text = format!("{time}", time = timestamp_time);
+            let timestamp_text = format!("{}", timestamp_time);
             let text_size = get_text_size(
                 &timestamp_font,
                 Scale::uniform(args.timestamp_font_size),
                 &timestamp_text,
             );
-            let rectangle_hpadding = args.timestamp_horizontal_margin;
-            let rectangle_vpadding = args.timestamp_vertical_margin;
+            let rectangle_hpadding = args.timestamp_horizontal_padding;
+            let rectangle_vpadding = args.timestamp_vertical_padding;
 
             let (upper_left, size) = compute_timestamp_position(
                 args,
@@ -503,7 +528,7 @@ pub fn compose_contact_sheet(
                     &mut image,
                     Rect::at(upper_left.x as i32, upper_left.y as i32).of_size(size.x, size.y),
                     timestamp_border_colour,
-                    3.0,
+                    args.timestamp_border_radius,
                 );
             } else {
                 let offset_factor = args.timestamp_border_size;
@@ -562,9 +587,17 @@ pub fn compose_contact_sheet(
         }
     }
 
-    if let MetadataPosition::Bottom = args.metadata_position {
-        y += args.grid_vertical_spacing;
-        image::imageops::replace(&mut image, &mut metadata_image, 0, y);
+    match args.metadata_position {
+        MetadataPosition::Top => {
+            image::imageops::replace(&mut image, &mut metadata_image, 0, 0);
+        }
+        MetadataPosition::Bottom => {
+            y += args.grid_vertical_spacing;
+            image::imageops::replace(&mut image, &mut metadata_image, 0, y);
+        }
+        MetadataPosition::Hidden => {
+            info!("Metadata hidden");
+        }
     }
     Ok(image)
 }
@@ -614,66 +647,6 @@ fn get_text_size(font: &Font, scale: Scale, text: &str) -> (u32, u32) {
         (max_x - min_x) as u32
     };
     (glyphs_width, glyphs_height)
-}
-
-fn drop_shadow(args: &Args, desired_size: &Grid) -> Image<Rgba<u8>> {
-    let shadow_width = 15;
-    let mut grey_image = RgbaImage::from_pixel(
-        desired_size.x + shadow_width,
-        desired_size.y + shadow_width,
-        decode_hex("44444400"),
-    );
-    let offset = 10;
-    let background_colour = decode_hex(&args.background_colour);
-    let mut coords = vec![
-        (0, 0, offset, desired_size.y + shadow_width),
-        (0, 0, desired_size.x + shadow_width, offset),
-        (
-            desired_size.x + shadow_width - offset,
-            0,
-            offset,
-            desired_size.y + shadow_width,
-        ),
-        (
-            0,
-            desired_size.y + shadow_width - offset,
-            desired_size.x + shadow_width,
-            offset,
-        ),
-    ];
-    for (rx, ry, rw, rh) in coords {
-        imageproc::drawing::draw_filled_rect_mut(
-            &mut grey_image,
-            Rect::at(rx as i32, ry as i32).of_size(rw, rh),
-            background_colour,
-        );
-    }
-
-    grey_image = imageproc::filter::gaussian_blur_f32(&grey_image, 3.0);
-    coords = vec![
-        (0, 0, offset / 4, desired_size.y + shadow_width),
-        (0, 0, desired_size.x + shadow_width, offset / 4),
-        (
-            desired_size.x + shadow_width - offset / 4,
-            0,
-            offset / 4,
-            desired_size.y + shadow_width,
-        ),
-        (
-            0,
-            desired_size.y + shadow_width  - offset / 4,
-            desired_size.x + shadow_width,
-            offset / 4,
-        ),
-    ];
-    for (rx, ry, rw, rh) in coords {
-        imageproc::drawing::draw_filled_rect_mut(
-            &mut grey_image,
-            Rect::at(rx as i32, ry as i32).of_size(rw, rh),
-            background_colour,
-        );
-    }
-    grey_image
 }
 
 /// Draws a rectangle with corners rounded to radius.
