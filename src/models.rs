@@ -3,7 +3,6 @@ use crate::errors::CustomError;
 use clap::arg_enum;
 use image;
 use serde::Deserialize;
-use serde_json::{Value};
 use std::error::Error;
 use std::io;
 use std::path::Path;
@@ -175,7 +174,9 @@ impl MediaInfo {
                 }
             }
 
-            let sample_aspect_ratio = video_stream.sample_aspect_ratio;
+            let sample_aspect_ratio = video_stream
+                .sample_aspect_ratio
+                .ok_or(CustomError::NoneError)?;
             if sample_aspect_ratio == "1:1" {
                 display_width = sample_width;
                 display_height = sample_height;
@@ -360,7 +361,7 @@ impl MediaInfo {
         if let Stream::VideoStream(video_stream) = video_stream {
             video_codec = video_stream.codec_name;
             video_codec_long = video_stream.codec_long_name;
-            sample_aspect_ratio = Some(video_stream.sample_aspect_ratio);
+            sample_aspect_ratio = video_stream.sample_aspect_ratio;
             display_aspect_ratio = video_stream.display_aspect_ratio;
             if let Some(avg_frame_rate) = video_stream.avg_frame_rate {
                 let splits: Vec<&str> = avg_frame_rate.split("/").collect();
@@ -380,7 +381,7 @@ impl MediaInfo {
         let mut audio_bit_rate = None;
         if let Some(audio_stream) = Self::find_audio_stream(&ffprobe) {
             if let Stream::AudioStream(audio_stream) = audio_stream.clone() {
-                audio_codec = Some(audio_stream.codec_name);
+                audio_codec = audio_stream.codec_name;
                 audio_codec_long = audio_stream.codec_long_name;
                 audio_sample_rate = Some(audio_stream.sample_rate.unwrap().parse().unwrap());
                 audio_bit_rate = Some(audio_stream.bit_rate.unwrap().parse().unwrap());
@@ -634,110 +635,55 @@ pub struct GenericStream {}
 #[serde(tag = "codec_type")]
 pub enum Stream {
     #[serde(rename = "video")]
-    VideoStream(VideoStream),
+    VideoStream(StreamStruct),
     #[serde(rename = "audio")]
-    AudioStream(AudioStream),
-    OtherStream(OtherStream)
+    AudioStream(StreamStruct),
+    // OtherStream(OtherStream),
 }
 
 #[derive(Clone, Default, Debug, Deserialize)]
-pub struct VideoStream {
+pub struct StreamStruct {
     avg_frame_rate: Option<String>,
-    bit_rate: Option<String>,
     bits_per_raw_sample: Option<String>,
+    bit_rate: Option<String>,
+    chroma_location: Option<String>,
     codec_long_name: Option<String>,
     codec_name: Option<String>,
     codec_tag: Option<String>,
     codec_tag_string: Option<String>,
     codec_time_base: Option<String>,
-    codec_type: String,
-    coded_height: Option<i32>,
-    coded_width: Option<i32>,
+    codec_type: Option<String>,
+    coded_height: Option<u32>,
+    coded_width: Option<u32>,
     color_primaries: Option<String>,
     color_range: Option<String>,
-    colr_space: Option<String>,
+    color_space: Option<String>,
     color_transfer: Option<String>,
-    chroma_location: Option<String>,
     display_aspect_ratio: Option<String>,
-    display_height: Option<u32>,
-    display_width: Option<u32>,
     #[serde(skip)]
     disposition: Disposition,
-    duration_ts: Option<i32>,
+    duration_ts: Option<u32>,
     duration: Option<String>,
-    has_b_frames: i32,
+    field_order: Option<String>,
+    has_b_frames: Option<u32>,
     height: Option<u32>,
-    index: i32,
+    index: Option<u32>,
     is_avc: Option<String>,
-    level: Option<i32>,
+    level: Option<u32>,
     nal_length_size: Option<String>,
-    nb_frames: Option<String>,
     pix_fmt: Option<String>,
-    profile: String,
-    r_frame_rate: String,
-    refs: Option<i32>,
+    profile: Option<String>,
+    r_frame_rate: Option<String>,
+    refs: Option<u32>,
     #[serde(default = "default_sample_aspect_ratio")]
-    sample_aspect_ratio: String,
-    start_pts: Option<i32>,
+    sample_aspect_ratio: Option<String>,
+    sample_rate: Option<String>,
+    start_pts: Option<u32>,
     start_time: Option<String>,
+    #[serde(skip)]
     tags: StreamTags,
     time_base: Option<String>,
     width: Option<u32>,
-}
-
-#[derive(Clone, Default, Debug, Deserialize)]
-pub struct AudioStream {
-    avg_frame_rate: Option<String>,
-    bit_rate: Option<String>,
-    bits_per_sample: Option<i32>,
-    channel_layout: String,
-    channels: i32,
-    codec_long_name: Option<String>,
-    codec_name: String,
-    codec_tag: String,
-    codec_tag_string: String,
-    codec_time_base: String,
-    codec_type: String,
-    disposition: Disposition,
-    dmix_mode: Option<String>,
-    duration: Option<String>,
-    duration_ts: Option<i32>,
-    index: i32,
-    loro_cmixlev: Option<String>,
-    loro_surmixlev: Option<String>,
-    ltrt_cmixlev: Option<String>,
-    ltrt_surmixlev: Option<String>,
-    max_bit_rate: Option<String>,
-    nb_frames: Option<String>,
-    profile: Option<String>,
-    r_frame_rate: Option<String>,
-    sample_fmt: Option<String>,
-    sample_rate: Option<String>,
-    side_data_list: Option<Vec<SideDataType>>,
-    start_pts: Option<i32>,
-    start_time: Option<String>,
-    tags: StreamTags,
-    time_base: Option<String>,
-}
-
-#[derive(Clone, Default, Debug, Deserialize)]
-pub struct OtherStream {
-    index: u32,
-    codec_name: String,
-    codec_long_name: String,
-    codec_type: String,
-    codec_time_base: String,
-    codec_tag_string: String,
-    codec_tag: String,
-    r_frame_rate: String,
-    avg_frame_rate: String,
-    time_base: String,
-    start_pts: u32,
-    start_time: String,
-    duration_ts: Option<u32>,
-    duration: Option<String>,
-    disposition: Disposition,
-    tags: StreamTags,
 }
 
 #[derive(Clone, Default, Debug, Deserialize)]
@@ -745,8 +691,8 @@ struct SideDataType {
     side_data_type: String,
 }
 
-fn default_sample_aspect_ratio() -> String {
-    "1:1".to_string()
+fn default_sample_aspect_ratio() -> Option<String> {
+    Some("1:1".to_string())
 }
 
 #[derive(Clone, Debug, Default, Deserialize)]

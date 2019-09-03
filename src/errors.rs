@@ -31,6 +31,7 @@ pub enum CustomError {
     FloatError(ParseFloatError),
     Io(io::Error),
     MediaError,
+    NoneError,
     RustTypeError(FontError),
     VideoStreamError,
 }
@@ -45,6 +46,7 @@ impl fmt::Display for CustomError {
             CustomError::IntError(ref cause) => write!(f, "Parse Int Error: {}", cause),
             CustomError::Io(ref cause) => write!(f, "IO Error: {}", cause),
             CustomError::MediaError => write!(f, "Could not find all media attributes."),
+            CustomError::NoneError => write!(f, "Could not unwrap None."),
             CustomError::RustTypeError(ref cause) => write!(f, "Rust Type Font Error: {}", cause),
             CustomError::VideoStreamError => write!(f, "The file does not contain a video stream.")
         }
@@ -61,6 +63,7 @@ impl Error for CustomError {
             CustomError::IntError(ref cause) => cause.description(),
             CustomError::Io(ref cause) => cause.description(),
             CustomError::MediaError => "possibly corrupt media",
+            CustomError::NoneError => "unable to unwrap None",
             CustomError::RustTypeError(ref cause) => cause.description(),
             CustomError::VideoStreamError => "No video stream in file",
         }
@@ -74,6 +77,7 @@ impl Error for CustomError {
             CustomError::IntError(ref cause) => Some(cause),
             CustomError::Io(ref cause) => Some(cause),
             CustomError::MediaError => None,
+            CustomError::NoneError => None,
             CustomError::RustTypeError(ref cause) => Some(cause),
             CustomError::VideoStreamError => None,
         }
