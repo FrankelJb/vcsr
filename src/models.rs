@@ -67,10 +67,6 @@ pub struct MediaInfo {
 #[derive(Clone, Debug, Default)]
 pub struct MediaAttributes {
     pub dimensions: Dimensions,
-    pub audio_codec: Option<String>,
-    pub audio_codec_long: Option<String>,
-    pub audio_bit_rate: Option<u32>,
-    pub audio_sample_rate: Option<u32>,
     pub display_aspect_ratio: Option<String>,
     pub duration: String,
     pub duration_seconds: f32,
@@ -148,13 +144,6 @@ impl MediaInfo {
         ffprobe.streams.iter().find(|stream| match stream {
             Stream::VideoStream(_) => true,
             _ => false,
-        })
-    }
-
-    pub fn find_audio_stream(ffprobe: &Ffprobe) -> Option<&Stream> {
-        ffprobe.streams.iter().find(|stream| match stream {
-            Stream::VideoStream(_) => false,
-            _ => true,
         })
     }
 
@@ -375,23 +364,8 @@ impl MediaInfo {
                 frame_rate = frame_rate;
             }
         }
-        let mut audio_codec = None;
-        let mut audio_codec_long = None;
-        let mut audio_sample_rate = None;
-        let mut audio_bit_rate = None;
-        if let Some(audio_stream) = Self::find_audio_stream(&ffprobe) {
-            if let Stream::AudioStream(audio_stream) = audio_stream.clone() {
-                audio_codec = audio_stream.codec_name;
-                audio_codec_long = audio_stream.codec_long_name;
-                audio_sample_rate = Some(audio_stream.sample_rate.unwrap().parse().unwrap());
-                audio_bit_rate = Some(audio_stream.bit_rate.unwrap().parse().unwrap());
-            }
-        }
+
         Ok(MediaAttributes {
-            audio_codec: audio_codec,
-            audio_codec_long: audio_codec_long,
-            audio_sample_rate: audio_sample_rate,
-            audio_bit_rate: audio_bit_rate,
             dimensions: dimensions,
             display_aspect_ratio: display_aspect_ratio,
             duration: duration,
@@ -638,7 +612,8 @@ pub enum Stream {
     VideoStream(StreamStruct),
     #[serde(rename = "audio")]
     AudioStream(StreamStruct),
-    // OtherStream(OtherStream),
+    #[serde(rename = "subtitle")]
+    SubtitleStream(StreamStruct),
 }
 
 #[derive(Clone, Default, Debug, Deserialize)]
