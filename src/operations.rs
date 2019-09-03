@@ -8,6 +8,7 @@ use crate::models::{
 
 use image::{GenericImage, ImageBuffer, Rgba, RgbaImage};
 use imageproc::{drawing::draw_text_mut, rect::Rect};
+use indicatif::ProgressBar;
 use rand::{distributions::Alphanumeric, thread_rng, Rng};
 use rayon::prelude::*;
 use rusttype::{point, Font, FontCollection, Point, PositionedGlyph, Scale};
@@ -68,6 +69,7 @@ pub fn select_sharpest_images(
     media_attributes: &MediaAttributes,
     media_capture: &MediaCapture,
     args: &Args,
+    bar: &ProgressBar,
 ) -> Result<(Vec<Frame>, Vec<Frame>), CustomError> {
     let desired_size = grid_desired_size(
         &args.grid,
@@ -89,11 +91,8 @@ pub fn select_sharpest_images(
                       suffix: &str,
                       args: &Args|
      -> Result<Frame, CustomError> {
-        info!(
-            "Starting task {}/{}",
-            task_number,
-            args.num_samples.unwrap()
-        );
+        bar.set_message(&format!("Creating capture {}", task_number));
+        bar.inc(1);
         let rand_string: String = thread_rng().sample_iter(&Alphanumeric).take(7).collect();
         let mut dir = env::temp_dir();
         let filename = format!("tmp{}{}", rand_string, suffix);
@@ -119,7 +118,7 @@ pub fn select_sharpest_images(
         .enumerate()
         .map(|(i, ts)| {
             do_capture(
-                i + 1,
+                i,
                 (MediaInfo::pretty_to_seconds(&ts)?, ts),
                 desired_size.x,
                 desired_size.y,

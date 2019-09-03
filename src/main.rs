@@ -1,6 +1,7 @@
 #![allow(dead_code)]
 
 extern crate clap;
+extern crate console;
 extern crate env_logger;
 extern crate exitcode;
 extern crate image;
@@ -18,11 +19,14 @@ mod constants;
 mod errors;
 mod models;
 mod operations;
+
+use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use std::{
     ffi::OsStr,
     io,
     path::Path,
     process::{Command, Stdio},
+    thread,
     {env, error::Error},
 };
 use walkdir::{DirEntry, WalkDir};
@@ -48,6 +52,11 @@ use walkdir::{DirEntry, WalkDir};
 fn main() {
     env::set_var("RUST_LOG", "vcsr=debug,info,warn");
     env_logger::builder().default_format_timestamp(false).init();
+
+    let multi = MultiProgress::new();
+    let bar_style = ProgressStyle::default_bar()
+        .template("[{elapsed_precise}] {bar:40.cyan/blue} {pos:>7}/{len:7} {msg}")
+        .progress_chars("##-");
 
     match Command::new("ffmpeg")
         .stdin(Stdio::null())
@@ -85,22 +94,32 @@ fn main() {
                 }
             })
         {
+            let bar = multi.add(ProgressBar::hidden());
+            bar.set_style(bar_style.clone());
             let mut current_args = args.clone();
-            match process_file(entry, &mut current_args) {
+            let _ = thread::spawn(move || match process_file(entry, &mut current_args, &bar) {
                 Ok(file_name) => {
-                    info!("contact sheet succesfully created at {}", file_name);
-                    std::process::exit(exitcode::OK);
+                    bar.finish_with_message(&format!(
+                        "contact sheet succesfully created at {}",
+                        file_name
+                    ));
                 }
                 Err(err) => {
                     error!("Error: {:?}", err.description());
                     std::process::exit(-1);
                 }
-            }
+            });
         }
     }
+    multi.join().unwrap();
+    std::process::exit(exitcode::OK);
 }
 
-fn process_file(dir_entry: DirEntry, args: &mut args::Args) -> Result<String, errors::CustomError> {
+fn process_file(
+    dir_entry: DirEntry,
+    args: &mut args::Args,
+    bar: &ProgressBar,
+) -> Result<String, errors::CustomError> {
     let file_name_str = dir_entry.file_name().to_str().unwrap();
 
     if args.verbose {
@@ -114,7 +133,7 @@ fn process_file(dir_entry: DirEntry, args: &mut args::Args) -> Result<String, er
         } else {
             return Err(errors::CustomError::Io(io::Error::new(
                 io::ErrorKind::NotFound,
-                "file does not found",
+                "file does not exist",
             )));
         }
     }
@@ -229,6 +248,7 @@ fn process_file(dir_entry: DirEntry, args: &mut args::Args) -> Result<String, er
     }
 
     args.num_selected = Some(args.grid.x * args.grid.y);
+    bar.set_length(args.num_selected.unwrap() as u64 + 4);
 
     if args.num_samples.is_none() {
         args.num_samples = args.num_selected;
@@ -261,14 +281,19 @@ fn process_file(dir_entry: DirEntry, args: &mut args::Args) -> Result<String, er
         args.grid_vertical_spacing = grid_spacing;
     }
 
-    let (mut selected_frames, temp_frames) =
-        operations::select_sharpest_images(&media_attributes, &media_capture, &args)?;
+    bar.inc(1);
 
-    info!("Composing contact sheet");
+    let (mut selected_frames, temp_frames) =
+        operations::select_sharpest_images(&media_attributes, &media_capture, &args, &bar)?;
+
+    bar.set_message("Composing contact sheet");
+    bar.inc(1);
 
     let image = operations::compose_contact_sheet(&media_attributes, &mut selected_frames, &args)?;
 
+    bar.set_message("Saving image");
     image.save(&output_path)?;
+    bar.inc(1);
 
     if let Some(thumbnail_output_path) = &args.thumbnail_output_path {
         if !Path::new(thumbnail_output_path).exists() {
@@ -288,10 +313,11 @@ fn process_file(dir_entry: DirEntry, args: &mut args::Args) -> Result<String, er
         }
     }
 
-    info!("Cleaning up temporary files");
+    bar.set_message("Cleaning up temporary files");
     for frame in temp_frames {
         std::fs::remove_file(frame.filename)?;
     }
+    bar.inc(1);
 
     Ok(output_path)
 }

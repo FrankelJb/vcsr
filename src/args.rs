@@ -9,6 +9,10 @@ pub fn application_args() -> Args {
 #[derive(Clone, Debug, StructOpt)]
 #[structopt(global_settings(&[AppSettings::ColoredHelp]))]
 pub struct Args {
+    #[structopt(skip)]
+    pub num_groups: Option<u32>,
+    #[structopt(skip)]
+    pub num_selected: Option<u32>,
     ///Make accurate captures. This capture mode is way slower than the default one but it helps when capturing frames from HEVC videos.
     #[structopt(long, short)]
     pub accurate: bool,
@@ -125,11 +129,6 @@ pub struct Args {
     ///Do not overwrite output file if it already exists, simply ignore this file and continue processing other unprocessed files.
     #[structopt(long)]
     pub no_overwrite: bool,
-
-    #[structopt(skip)]
-    pub num_groups: Option<u32>,
-    #[structopt(skip)]
-    pub num_selected: Option<u32>,
 
     ///save to output file
     #[structopt(long = "output", short = "o")]
