@@ -485,7 +485,7 @@ impl MediaCapture {
         } else {
             Err(CustomError::Io(io::Error::new(
                 io::ErrorKind::NotFound,
-                "capture file was not created",
+                "Cannot compute average colour as capture file was not created",
             )))
         }
     }
@@ -528,7 +528,7 @@ impl MediaCapture {
         } else {
             Err(CustomError::Io(io::Error::new(
                 io::ErrorKind::NotFound,
-                "capture file was not created",
+                "Cannot compute blurriness as capture file was not created",
             )))
         }
     }

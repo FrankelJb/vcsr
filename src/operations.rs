@@ -208,21 +208,22 @@ pub fn max_line_length(
     let offset = point(0.0, v_metrics.ascent);
 
     let mut max_length = 0;
-    for i in 0..text.len() + 1 {
-        let text_chunk = text.get(0..i).unwrap();
-        let glyphs: Vec<PositionedGlyph<'_>> =
-            metadata_font.layout(text_chunk, scale, offset).collect();
-        let text_width = glyphs
-            .iter()
-            .rev()
-            .map(|g| g.position().x as f32 + g.unpositioned().h_metrics().advance_width)
-            .next()
-            .unwrap_or(0.0)
-            .ceil() as u32;
+    for i in 0..text.chars().count() + 1 {
+        if let Some(text_chunk) = text.get(0..i) {
+            let glyphs: Vec<PositionedGlyph<'_>> =
+                metadata_font.layout(text_chunk, scale, offset).collect();
+            let text_width = glyphs
+                .iter()
+                .rev()
+                .map(|g| g.position().x as f32 + g.unpositioned().h_metrics().advance_width)
+                .next()
+                .unwrap_or(0.0)
+                .ceil() as u32;
 
-        max_length = i;
-        if text_width > max_width {
-            break;
+            max_length = i;
+            if text_width > max_width {
+                break;
+            }
         }
     }
     max_length
@@ -636,11 +637,23 @@ fn get_text_size(font: &Font, scale: Scale, text: &str) -> (u32, u32) {
     let glyphs_width = {
         let min_x = glyphs
             .first()
-            .map(|g| g.pixel_bounding_box().unwrap().min.x)
+            .map(|g| {
+                if let Some(bb) = g.pixel_bounding_box() {
+                    bb.min.x
+                } else {
+                    0
+                }
+            })
             .unwrap();
         let max_x = glyphs
             .last()
-            .map(|g| g.pixel_bounding_box().unwrap().max.x)
+            .map(|g| {
+                if let Some(bb) = g.pixel_bounding_box() {
+                    bb.max.x
+                } else {
+                    0
+                }
+            })
             .unwrap();
         (max_x - min_x) as u32
     };
