@@ -745,3 +745,13 @@ arg_enum! {
         Center,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn grid_from_string() {
+        let g = Grid::from_str("2x2");
+        assert_eq!(g.unwrap(), Grid { x: 2, y: 2});
+    }
+}
