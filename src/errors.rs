@@ -23,9 +23,29 @@ impl Error for ArgumentError {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct ColourError {
+    pub cause: String,
+}
+
+impl fmt::Display for ColourError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "colour invalid")
+    }
+}
+
+// This is important for other errors to wrap this one.
+impl Error for ColourError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        // Generic error, underlying cause isn't tracked.
+        None
+    }
+}
+
 #[derive(Debug)]
 pub enum CustomError {
     ArgumentError(ArgumentError),
+    ColourError(ColourError),
     GridShape,
     IntError(ParseIntError),
     FloatError(ParseFloatError),
@@ -40,8 +60,8 @@ pub enum CustomError {
 impl fmt::Display for CustomError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
-            CustomError::ArgumentError(ref cause) => write!(f, "Arguments are invalid. {}", cause),
-            CustomError::GridShape => write!(f, "Grid must be of the form mxn, where m is the number of columns and n is the number of rows."),
+            CustomError::ArgumentError(ref cause) => write!(f, "Arguments are invalid: {}", cause),
+            CustomError::ColourError(ref cause) => write!(f, "Input colour was invalid: {}", cause),            CustomError::GridShape => write!(f, "Grid must be of the form mxn, where m is the number of columns and n is the number of rows."),
             CustomError::FloatError(ref cause) => write!(f, "Parse Float Error: {}", cause),
             CustomError::IntError(ref cause) => write!(f, "Parse Int Error: {}", cause),
             CustomError::Io(ref cause) => write!(f, "IO Error: {}", cause),
@@ -58,6 +78,7 @@ impl Error for CustomError {
     fn description(&self) -> &str {
         match *self {
             CustomError::ArgumentError(ref cause) => &cause.cause,
+            CustomError::ColourError(ref cause) => &cause.cause,
             CustomError::GridShape => "Cannot create a grid with those dimensions",
             CustomError::FloatError(ref cause) => cause.description(),
             CustomError::IntError(ref cause) => cause.description(),
@@ -72,6 +93,7 @@ impl Error for CustomError {
     fn cause(&self) -> Option<&Error> {
         match *self {
             CustomError::ArgumentError(ref cause) => Some(cause),
+            CustomError::ColourError(ref cause) => Some(cause),
             CustomError::GridShape => None,
             CustomError::FloatError(ref cause) => Some(cause),
             CustomError::IntError(ref cause) => Some(cause),

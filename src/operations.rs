@@ -1,6 +1,6 @@
 use crate::args::Args;
 use crate::constants::*;
-use crate::errors::CustomError;
+use crate::errors::{ColourError, CustomError};
 use crate::models::{
     Dimensions, Frame, Grid, MediaAttributes, MediaCapture, MediaInfo, MetadataPosition,
     TimestampPosition,
@@ -338,7 +338,7 @@ pub fn draw_metadata<'a>(
     header_font_colour: Rgba<u8>,
     header_font_size: f32,
     header_font: &'a Font<'a>,
-) -> u32 {
+) -> Result<u32, CustomError> {
     let mut h = args.grid_vertical_spacing;
     let scale = Scale::uniform(header_font_size);
     for line in header_lines {
@@ -347,9 +347,9 @@ pub fn draw_metadata<'a>(
 
         let text_size = get_text_size(&header_font, scale, line);
         let mut shadow = RgbaImage::from_pixel(
-            text_size.0,
-            text_size.1,
-            decode_hex(&args.metadata_background_colour),
+            text_size.0 + 2,
+            text_size.1 + 2,
+            decode_hex(&args.metadata_background_colour)?,
         );
         draw_text_mut(
             &mut shadow,
@@ -375,7 +375,7 @@ pub fn draw_metadata<'a>(
         );
         h += header_line_height;
     }
-    h
+    Ok(h)
 }
 
 /// Creates a video contact sheet with the media information in a header
@@ -419,7 +419,7 @@ pub fn compose_contact_sheet(
         }
     };
     let timestamp_font_scale = Scale::uniform(args.timestamp_font_size);
-    let timestamp_border_colour = decode_hex(&args.timestamp_border_colour);
+    let timestamp_border_colour = decode_hex(&args.timestamp_border_colour)?;
 
     let header_lines = prepare_metadata_text_lines(
         &media_attributes,
@@ -442,13 +442,13 @@ pub fn compose_contact_sheet(
     let final_image_width = width;
     let final_image_height = height + header_height;
 
-    let hex_background = decode_hex(&args.background_colour);
+    let hex_background = decode_hex(&args.background_colour)?;
     let mut image = RgbaImage::from_pixel(final_image_width, final_image_height, hex_background);
 
     let mut metadata_image = RgbaImage::from_pixel(
         final_image_width,
         header_height,
-        decode_hex(&args.metadata_background_colour),
+        decode_hex(&args.metadata_background_colour)?,
     );
 
     let mut y = 0;
@@ -462,10 +462,10 @@ pub fn compose_contact_sheet(
         &args,
         header_line_height,
         &header_lines,
-        decode_hex(&args.metadata_font_colour),
+        decode_hex(&args.metadata_font_colour)?,
         args.metadata_font_size,
         &header_font,
-    );
+    )?;
 
     let mut x = args.grid_horizontal_spacing;
     y += args.grid_vertical_spacing;
@@ -522,7 +522,7 @@ pub fn compose_contact_sheet(
             );
 
             if !args.timestamp_border_mode {
-                let timestamp_border_colour = decode_hex(&args.timestamp_border_colour);
+                let timestamp_border_colour = decode_hex(&args.timestamp_border_colour)?;
                 draw_filled_rounded_rect_mut(
                     &mut image,
                     Rect::at(upper_left.x as i32, upper_left.y as i32).of_size(size.x, size.y),
@@ -560,7 +560,7 @@ pub fn compose_contact_sheet(
                     );
                 }
             }
-            let timestamp_font_colour = decode_hex(&args.timestamp_font_colour);
+            let timestamp_font_colour = decode_hex(&args.timestamp_font_colour)?;
             draw_text_mut(
                 &mut image,
                 timestamp_font_colour,
@@ -601,9 +601,11 @@ pub fn compose_contact_sheet(
     Ok(image)
 }
 
-fn decode_hex(s: &str) -> Rgba<u8> {
+fn decode_hex(s: &str) -> Result<Rgba<u8>, CustomError> {
     if s.len() % 2 != 0 {
-        panic!("cannot decode odd length colours");
+        Err(CustomError::ColourError(ColourError {
+            cause: "cannot decode odd length colours".to_string(),
+        }))
     } else {
         let mut hex_vec: Vec<u8> = (0..s.len())
             .step_by(2)
@@ -614,7 +616,7 @@ fn decode_hex(s: &str) -> Rgba<u8> {
             hex_vec.push(255u8);
         }
         array.copy_from_slice(&hex_vec);
-        Rgba(array)
+        Ok(Rgba(array))
     }
 }
 

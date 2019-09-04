@@ -24,7 +24,7 @@ use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use std::{
     ffi::OsStr,
     io,
-    path::Path,
+    path::{Path, PathBuf},
     process::{Command, Stdio},
     thread,
     {env, error::Error},
@@ -100,8 +100,8 @@ fn main() {
             let _ = thread::spawn(move || match process_file(entry, &mut current_args, &bar) {
                 Ok(file_name) => {
                     bar.finish_with_message(&format!(
-                        "contact sheet succesfully created at {}",
-                        file_name
+                        "succesfully created {}",
+                        file_name.file_name().unwrap().to_string_lossy()
                     ));
                 }
                 Err(err) => {
@@ -119,7 +119,7 @@ fn process_file(
     dir_entry: DirEntry,
     args: &mut args::Args,
     bar: &ProgressBar,
-) -> Result<String, errors::CustomError> {
+) -> Result<PathBuf, errors::CustomError> {
     let file_name_str = dir_entry.file_name().to_str().unwrap();
 
     if args.verbose {
@@ -129,7 +129,7 @@ fn process_file(
     if !dir_entry.path().exists() {
         if args.ignore_errors {
             info!("File does not exist, skipping {}: ", file_name_str);
-            return Ok(String::from(file_name_str));
+            return Ok(dir_entry.path().to_path_buf());
         } else {
             return Err(errors::CustomError::Io(io::Error::new(
                 io::ErrorKind::NotFound,
@@ -139,27 +139,35 @@ fn process_file(
     }
 
     let output_path = match &args.output_path {
-        None => format!("{}.{}", file_name_str, &args.image_format),
+        None => {
+            let mut full_path = dir_entry.path().to_path_buf().into_os_string();
+            full_path.push(format!(".{}", args.image_format));
+            PathBuf::from(full_path)
+        }
         Some(output_path) => {
             if Path::new(output_path).is_dir() {
-                Path::new(output_path)
-                    .join(dir_entry.path().file_stem().unwrap())
-                    .to_string_lossy()
-                    .into_owned()
+                let mut full_path = Path::new(output_path)
+                    .join(dir_entry.file_name())
+                    .into_os_string();
+                full_path.push(format!(".{}", args.image_format));
+                PathBuf::from(full_path)
             } else {
-                output_path.to_string()
+                Path::new(output_path).to_path_buf()
             }
         }
     };
 
     if args.no_overwrite {
         if Path::new(&output_path).exists() {
-            info!("contact sheet already exists, skipping {}", &output_path);
+            info!(
+                "contact sheet already exists, skipping {}",
+                &output_path.to_string_lossy().to_owned().to_owned()
+            );
             return Ok(output_path);
         }
     }
 
-    info!("Processing {:?}", dir_entry.path());
+    // info!("Processing {:?}", dir_entry.path());
 
     if args.interval.is_some() && !args.manual_timestamps.is_empty() {
         return Err(errors::CustomError::ArgumentError(errors::ArgumentError {
