@@ -53,6 +53,7 @@ pub enum CustomError {
     MediaError,
     NoneError,
     RustTypeError(FontError),
+    TimestampError(ArgumentError),
     VideoStreamError,
 }
 
@@ -68,6 +69,7 @@ impl fmt::Display for CustomError {
             CustomError::MediaError => write!(f, "Could not find all media attributes."),
             CustomError::NoneError => write!(f, "Could not unwrap None."),
             CustomError::RustTypeError(ref cause) => write!(f, "Rust Type Font Error: {}", cause),
+            CustomError::TimestampError(ref cause) => write!(f, "Invalid timestamps: {}", cause.cause),
             CustomError::VideoStreamError => write!(f, "The file does not contain a video stream.")
         }
     }
@@ -75,21 +77,6 @@ impl fmt::Display for CustomError {
 
 // Allow this type to be treated like an error
 impl Error for CustomError {
-    fn description(&self) -> &str {
-        match *self {
-            CustomError::ArgumentError(ref cause) => &cause.cause,
-            CustomError::ColourError(ref cause) => &cause.cause,
-            CustomError::GridShape => "Cannot create a grid with those dimensions",
-            CustomError::FloatError(ref cause) => cause.description(),
-            CustomError::IntError(ref cause) => cause.description(),
-            CustomError::Io(ref cause) => cause.description(),
-            CustomError::MediaError => "possibly corrupt media",
-            CustomError::NoneError => "unable to unwrap None",
-            CustomError::RustTypeError(ref cause) => cause.description(),
-            CustomError::VideoStreamError => "No video stream in file",
-        }
-    }
-
     fn cause(&self) -> Option<&Error> {
         match *self {
             CustomError::ArgumentError(ref cause) => Some(cause),
@@ -101,6 +88,7 @@ impl Error for CustomError {
             CustomError::MediaError => None,
             CustomError::NoneError => None,
             CustomError::RustTypeError(ref cause) => Some(cause),
+            CustomError::TimestampError(ref cause) => Some(cause),
             CustomError::VideoStreamError => None,
         }
     }

@@ -22,12 +22,12 @@ mod operations;
 
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use std::{
+    env,
     ffi::OsStr,
     io,
     path::{Path, PathBuf},
     process::{Command, Stdio},
     thread,
-    {env, error::Error},
 };
 use walkdir::{DirEntry, WalkDir};
 
@@ -105,7 +105,7 @@ fn main() {
                     ));
                 }
                 Err(err) => {
-                    error!("Error: {:?}", err.description());
+                    error!("Error: {:?}", err.to_string());
                     std::process::exit(-1);
                 }
             });
@@ -220,13 +220,23 @@ fn process_file(
         args.num_selected = num_samples;
         args.num_groups = num_samples;
     }
-        &args.manual_timestamps.into_iter().filter(|m| {
-            models::MediaInfo::pretty_to_seconds(m).unwrap_or(0.0)
-                < media_attributes.duration_seconds
-        });
+
     // manual frame selection
     if !args.manual_timestamps.is_empty() {
-;
+        args.manual_timestamps = args
+            .manual_timestamps
+            .clone()
+            .into_iter()
+            .filter(|ts| {
+                models::MediaInfo::pretty_to_seconds(ts).unwrap()
+                    < media_attributes.duration_seconds
+            })
+            .collect();
+        if args.manual_timestamps.is_empty() {
+            return Err(errors::CustomError::TimestampError(errors::ArgumentError {
+                cause: String::from("no manual timestamps less than input duration."),
+            }));
+        }
         let mframes_size = Some(args.manual_timestamps.len() as u32);
         args.num_samples = mframes_size;
         args.num_selected = mframes_size;
@@ -256,9 +266,6 @@ fn process_file(
         }
     }
 
-    args.num_selected = Some(args.grid.x * args.grid.y);
-    bar.set_length(args.num_samples.unwrap() as u64 + 4);
-
     if args.num_samples.is_none() {
         args.num_samples = args.num_selected;
     }
@@ -284,6 +291,9 @@ fn process_file(
             args.num_groups = args.num_selected;
         }
     }
+
+    args.num_selected = Some(args.grid.x * args.grid.y);
+    bar.set_length(args.num_samples.unwrap() as u64 + 4);
 
     if let Some(grid_spacing) = args.grid_spacing {
         args.grid_horizontal_spacing = grid_spacing;

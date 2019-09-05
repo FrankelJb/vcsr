@@ -39,15 +39,14 @@ impl FromStr for Grid {
     type Err = CustomError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let mxn: Vec<&str> = s.split("x").collect();
+        let mxn_result: Result<Vec<u32>, _> = s.split("x").map(|m| m.parse::<u32>()).collect();
+        let mxn = mxn_result?;
         if mxn.len() > 2 {
             Err(CustomError::GridShape)
         } else {
-            let y_fromstr = mxn[1].parse::<u32>()?;
-            let x_fromstr = mxn[0].parse::<u32>()?;
             Ok(Grid {
-                x: x_fromstr,
-                y: y_fromstr,
+                x: mxn[0],
+                y: mxn[1],
             })
         }
     }
@@ -132,7 +131,7 @@ impl MediaInfo {
 
     pub fn human_readable_size(mut num: f64) -> String {
         let suffix = "B";
-        let mut size = format!("{:.1} {}{}", num, "Yi", suffix);
+        let mut size = String::from("");
         for unit in vec!["", "Ki", "Mi", "Gi", "Ti", "Pi", "Ei", "Zi"].iter() {
             if num.abs() < 1024.0 {
                 size = format!("{:3.1} {}{}", num, unit, suffix);
@@ -734,5 +733,32 @@ mod tests {
     fn grid_from_string() {
         let g = Grid::from_str("2x2");
         assert_eq!(g.unwrap(), Grid { x: 2, y: 2 });
+    }
+
+    #[test]
+    fn grid_from_invalid_string_length() {
+        // specific errors would be better
+        // but I don't feel like implementing
+        // PartialEq for CustomError right now.
+        let g = Grid::from_str("2x3x4");
+        assert!(g.is_err());
+    }
+
+    #[test]
+    fn grid_from_invalid_string_characters() {
+        let g = Grid::from_str("2x3m");
+        assert!(g.is_err());
+    }
+
+    #[test]
+    fn test_human_readable_size() {
+        let mut size = 1000f64;
+        for hrs in vec!["", "Ki", "Mi", "Gi", "Ti", "Pi", "Ei", "Zi"]
+            .iter()
+            .map(|s| format!("1000.0 {}{}", s, "B"))
+        {
+            assert_eq!(hrs, MediaInfo::human_readable_size(size));
+            size = size * 1024.0;
+        }
     }
 }
