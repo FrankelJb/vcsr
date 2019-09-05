@@ -167,8 +167,6 @@ fn process_file(
         }
     }
 
-    // info!("Processing {:?}", dir_entry.path());
-
     if args.interval.is_some() && !args.manual_timestamps.is_empty() {
         return Err(errors::CustomError::ArgumentError(errors::ArgumentError {
             cause: "Cannot use --interval and --manual at the same time.".to_string(),
@@ -217,22 +215,25 @@ fn process_file(
     if let Some(interval) = &args.interval {
         let total_delay = operations::total_delay_seconds(&media_attributes, &args);
         let selected_duration = media_attributes.duration_seconds - total_delay;
-        let num_samples =
-            Some((selected_duration as f32 / interval.total_seconds().floor()) as u32);
+        let num_samples = Some((selected_duration / interval.as_secs() as f32) as u32);
         args.num_samples = num_samples;
         args.num_selected = num_samples;
         args.num_groups = num_samples;
     }
-
+        &args.manual_timestamps.into_iter().filter(|m| {
+            models::MediaInfo::pretty_to_seconds(m).unwrap_or(0.0)
+                < media_attributes.duration_seconds
+        });
     // manual frame selection
     if !args.manual_timestamps.is_empty() {
+;
         let mframes_size = Some(args.manual_timestamps.len() as u32);
         args.num_samples = mframes_size;
         args.num_selected = mframes_size;
         args.num_groups = mframes_size;
     }
 
-    if args.interval.is_some() && !args.manual_timestamps.is_empty() {
+    if args.interval.is_some() || !args.manual_timestamps.is_empty() {
         let square_side = (args.num_samples.unwrap() as f32).sqrt().ceil() as u32;
 
         if args.grid == constants::DEFAULT_GRID_SIZE || (args.grid.x == 0 && args.grid.y == 0) {
@@ -256,7 +257,7 @@ fn process_file(
     }
 
     args.num_selected = Some(args.grid.x * args.grid.y);
-    bar.set_length(args.num_selected.unwrap() as u64 + 4);
+    bar.set_length(args.num_samples.unwrap() as u64 + 4);
 
     if args.num_samples.is_none() {
         args.num_samples = args.num_selected;

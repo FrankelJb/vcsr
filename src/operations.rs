@@ -47,7 +47,7 @@ pub fn total_delay_seconds(media_attributes: &MediaAttributes, args: &Args) -> f
 pub fn timestamp_generator(media_attributes: &MediaAttributes, args: &Args) -> Vec<String> {
     let delay = total_delay_seconds(media_attributes, args);
     let capture_interval = match &args.interval {
-        Some(interval) => interval.total_seconds(),
+        Some(interval) => interval.as_secs() as f32,
         None => {
             (media_attributes.duration_seconds - delay) / (args.num_samples.unwrap() as f32 + 1.0)
         }
@@ -78,10 +78,10 @@ pub fn select_sharpest_images(
         Some(args.grid_horizontal_spacing),
     );
 
-    let timestamps = if args.manual_timestamps.len() > 0 {
-        args.manual_timestamps.clone()
-    } else {
+    let timestamps = if args.manual_timestamps.is_empty() {
         timestamp_generator(media_attributes, &args)
+    } else {
+        args.manual_timestamps.clone()
     };
 
     let do_capture = |task_number: usize,
@@ -487,7 +487,6 @@ pub fn compose_contact_sheet(
     frames.sort_by(|a, b| a.timestamp.partial_cmp(&b.timestamp).unwrap());
     for (i, frame) in frames.iter().enumerate() {
         let mut f = image::open(&Path::new(&frame.filename)).unwrap().to_rgba();
-        putalpha(&mut f, args.capture_alpha);
 
         if !args.no_shadow {
             image::imageops::replace(&mut image, &mut blurred, x, y);

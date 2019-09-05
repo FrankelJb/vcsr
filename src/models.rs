@@ -3,11 +3,14 @@ use crate::errors::CustomError;
 use clap::arg_enum;
 use image;
 use serde::Deserialize;
-use std::error::Error;
-use std::io;
-use std::path::Path;
-use std::process::{Command, Stdio};
-use std::{fmt, str, str::FromStr};
+use std::{
+    error::Error,
+    fmt, io,
+    path::Path,
+    process::{Command, Stdio},
+    str,
+    str::FromStr,
+};
 use structopt::StructOpt;
 
 use rustfft::{num_complex::Complex, num_traits::Zero, FFTplanner};
@@ -100,8 +103,8 @@ impl MediaInfo {
     pub fn probe_media(path: &Path) -> Result<Ffprobe, CustomError> {
         if path.exists() {
             let output = Command::new("ffprobe")
-                // .arg("-v")
-                // .arg("quiet")
+                .arg("-v")
+                .arg("quiet")
                 .arg("-print_format")
                 .arg("json")
                 .arg("-show_format")
@@ -122,7 +125,7 @@ impl MediaInfo {
         } else {
             Err(CustomError::Io(io::Error::new(
                 io::ErrorKind::Other,
-                "cannot find requested file",
+                "cannot find requested video file",
             )))
         }
     }
@@ -700,28 +703,6 @@ pub struct Ffprobe {
     pub format: Format,
 }
 
-#[derive(Clone, Debug, StructOpt)]
-pub struct Interval {
-    #[structopt(long = "interval")]
-    pub interval: String,
-}
-
-impl Interval {
-    pub fn total_seconds(&self) -> f32 {
-        1.0
-    }
-}
-
-impl FromStr for Interval {
-    type Err = CustomError;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Ok(Interval {
-            interval: String::from(s),
-        })
-    }
-}
-
 arg_enum! {
     #[derive(Clone, Debug, StructOpt)]
     pub enum MetadataPosition {
@@ -752,6 +733,6 @@ mod tests {
     #[test]
     fn grid_from_string() {
         let g = Grid::from_str("2x2");
-        assert_eq!(g.unwrap(), Grid { x: 2, y: 2});
+        assert_eq!(g.unwrap(), Grid { x: 2, y: 2 });
     }
 }

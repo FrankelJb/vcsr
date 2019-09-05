@@ -1,5 +1,7 @@
-use crate::models::{Grid, Interval, MetadataPosition, TimestampPosition};
+use crate::models::{Grid, MetadataPosition, TimestampPosition};
 use clap::AppSettings;
+use humantime::DurationError;
+use std::time::Duration;
 use structopt::StructOpt;
 
 pub fn application_args() -> Args {
@@ -80,11 +82,11 @@ pub struct Args {
     #[structopt(long)]
     pub ignore_errors: bool,
 
-    /// Capture frames at specified interval. Interval format is any string supported by `parsedatetime`. For example '5m', '3 minutes 5 seconds', '1 hour 15 min and 20 sec' etc.
-    #[structopt(long)]
-    pub interval: Option<Interval>,
+    /// Capture frames at specified interval. Interval format is any string supported by `humantime`. For example '5m', '3 minutes 5 seconds', '1 hour 15 min and 20 sec' etc.
+    #[structopt(long, parse(try_from_str = parse_humantime_duration))]
+    pub interval: Option<Duration>,
 
-    /// Comma-separated list of frame timestamps to use, for example 1:11:11.111,2:22:22.222
+    /// Space-separated list of frame timestamps to use, for example 1:11:11.111 2:22:22.222
     #[structopt(long = "manual", short = "m", required = false)]
     pub manual_timestamps: Vec<String>,
 
@@ -171,7 +173,7 @@ pub struct Args {
     pub timestamp_border_mode: bool,
 
     /// Draw timestamp text with a border instead of the default rectangle.
-    #[structopt(long, default_value = "3.0")]
+    #[structopt(long, default_value = "1.0")]
     pub timestamp_border_radius: f32,
 
     /// Size of the timestamp border in pixels (used only with --timestamp-border-mode).
@@ -230,4 +232,8 @@ impl Args {
     fn num_samples(grid: Grid) -> Option<u32> {
         Some(grid.x * grid.y)
     }
+}
+
+fn parse_humantime_duration(src: &str) -> Result<Duration, DurationError> {
+    Ok(src.parse::<humantime::Duration>()?.into())
 }
