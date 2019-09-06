@@ -235,7 +235,7 @@ impl MediaInfo {
             .into_owned()
     }
 
-    pub fn compute_size(ffprobe: &Ffprobe) -> Result<(f64, String), Box<Error>> {
+    pub fn compute_size(ffprobe: &Ffprobe) -> Result<(f64, String), Box<dyn Error>> {
         let size_bytes = ffprobe.format.size.parse::<f64>()?;
         let size = MediaInfo::human_readable_size(size_bytes);
         Ok((size_bytes, size))
@@ -439,7 +439,7 @@ impl MediaCapture {
 
         let time_seconds;
         let skip_time_seconds;
-        let mut skip_time;
+        let skip_time;
         let mut args = if !self.accurate {
             vec!["-ss", time, "-i", &self.path]
         } else {

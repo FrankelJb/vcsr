@@ -77,7 +77,7 @@ impl fmt::Display for CustomError {
 
 // Allow this type to be treated like an error
 impl Error for CustomError {
-    fn cause(&self) -> Option<&Error> {
+    fn cause(&self) -> Option<&dyn Error> {
         match *self {
             CustomError::ArgumentError(ref cause) => Some(cause),
             CustomError::ColourError(ref cause) => Some(cause),

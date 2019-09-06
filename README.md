@@ -1,6 +1,8 @@
 ## Video Contact Sheets (in) Rust
 A video contact sheet generator written in rust.
 
+[![Build Status](https://travis-ci.com/FrankelJb/vcsr.svg?branch=master)](https://travis-ci.com/FrankelJb/vcsr)
+
 ### Reasons for existing
 This application is a direct port of [vcsi](https://github.com/amietn/vcsi). Full credit goes to the author for the algorithm and design.
 

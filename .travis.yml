@@ -1,1 +1,9 @@
 language: rust
+cache: cargo
+deploy:
+  provider: releases
+  api_key:
+    secure: XIRRuoXeUWFE9vV2fzz5ikLDRP6OreqfaTwU1SO1UcCXhl2j50IclWNZNIMMak2DLyl72aotZH4FnahbzXigzPX4JMoCOA6GEALN8A+zwIBt0zPqCj60xGMxHJHXTaf9GHfSDcBDYwnMZ0U47e1nT0vZ1XoezpJEXK5fZl9g1KdTLOMjclKG/RHl1O8uuHfJae5Bh0WY1Pu4ajAKypBJ+DG+LIlS7gowqPkTCQWEiyBH5b9IPiSr+zW32/H2PqZ17OBoH+WB91uMMVKWwH5RIsa9PAX8W/YBdyK9nf76+J5iYrUtrav+luh7LZ3M935HA6j2e0whSU3H7x9ICmpLDlT0doV7d/MiZlAgOUefWdcraRMS837F/LuOmgqD4/T9XMJsfFwwg+0lizfmBttLojS3oY+8ROKHXWa31xe4uaHFU8wx/IqjBfpdD4bo9/+3Q0ep+b0X/GBD31L7jCfVOJh3obHBzEQgYuzaOnkSO0PcgE94mP+CtGit+XZk3jAjV7lOdCt5xUXDkvR2OL5Ra+7xyzrv2CeJRj3CM4NCOGNVWRzXc/JyWuDH5nVL+eTu2crs7+roiwZQgkGSztAO2eUIQhlxTOWNVrJAMjA3xTnlNRncRtFebPwr+A40Xp/tNJKIxD3AXrgd3uY5Katg75p3ZU2Wv8Dxm+H5NUnOQ4k=
+  file: target/release/vcsr
+  on:
+    repo: FrankelJb/vcsr
