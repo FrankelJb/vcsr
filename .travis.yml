@@ -1,9 +1,47 @@
 language: rust
-cache: cargo
-deploy:
-  provider: releases
-  api_key:
+  # Cache `cargo install`ed tools, but don't cache the project's `target`
+# directory (which ends up over-caching and filling all disk space!)
+cache:
+  directories:
+    - /home/travis/.cargo
+
+GH_TOKEN: &GH_TOKEN
     secure: XIRRuoXeUWFE9vV2fzz5ikLDRP6OreqfaTwU1SO1UcCXhl2j50IclWNZNIMMak2DLyl72aotZH4FnahbzXigzPX4JMoCOA6GEALN8A+zwIBt0zPqCj60xGMxHJHXTaf9GHfSDcBDYwnMZ0U47e1nT0vZ1XoezpJEXK5fZl9g1KdTLOMjclKG/RHl1O8uuHfJae5Bh0WY1Pu4ajAKypBJ+DG+LIlS7gowqPkTCQWEiyBH5b9IPiSr+zW32/H2PqZ17OBoH+WB91uMMVKWwH5RIsa9PAX8W/YBdyK9nf76+J5iYrUtrav+luh7LZ3M935HA6j2e0whSU3H7x9ICmpLDlT0doV7d/MiZlAgOUefWdcraRMS837F/LuOmgqD4/T9XMJsfFwwg+0lizfmBttLojS3oY+8ROKHXWa31xe4uaHFU8wx/IqjBfpdD4bo9/+3Q0ep+b0X/GBD31L7jCfVOJh3obHBzEQgYuzaOnkSO0PcgE94mP+CtGit+XZk3jAjV7lOdCt5xUXDkvR2OL5Ra+7xyzrv2CeJRj3CM4NCOGNVWRzXc/JyWuDH5nVL+eTu2crs7+roiwZQgkGSztAO2eUIQhlxTOWNVrJAMjA3xTnlNRncRtFebPwr+A40Xp/tNJKIxD3AXrgd3uY5Katg75p3ZU2Wv8Dxm+H5NUnOQ4k=
-  file: target/release/vcsr
-  on:
-    repo: FrankelJb/vcsr
+
+DEPLOY_TO_GITHUB: &DEPLOY_TO_GITHUB
+  before_deploy:
+    - git config --local user.name "Ashley Williams"
+    - git config --local user.email "ashley666ashley@gmail.com"
+    - name="wasm-pack-$TRAVIS_TAG-$TARGET"
+    - mkdir $name
+    - cp target/$TARGET/release/wasm-pack $name/
+    - cp README.md LICENSE-MIT LICENSE-APACHE $name/
+    - tar czvf $name.tar.gz $name
+  deploy:
+    provider: releases
+    api_key: *GH_TOKEN
+    file: wasm-pack-$TRAVIS_TAG-$TARGET.tar.gz
+    skip_cleanup: true
+    on:
+      branch: master
+
+matrix:
+  include:
+  - name: Linux Binary
+    env: TARGET=x86_64-unknown-linux-musl
+    rust: stable
+    before_script: rustup target add $TARGET
+    script: cargo build --release --target $TARGET --locked
+    addons:
+      apt:
+        packages:
+          - musl-tools
+    <<: *DEPLOY_TO_GITHUB
+
+  - name: macOS Binary
+    env: MACOSX_DEPLOYMENT_TARGET=10.7 TARGET=x86_64-apple-darwin
+    os: osx
+    rust: stable
+    script: cargo build --release --target $TARGET --locked
+    install: true
+    <<: *DEPLOY_TO_GITHUB
