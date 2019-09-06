@@ -50,7 +50,13 @@ use walkdir::{DirEntry, WalkDir};
 // }
 
 fn main() {
-    env::set_var("RUST_LOG", "vcsr=debug,info,warn");
+    let args = args::application_args();
+    let log_level = if args.verbose {
+        "debug,info,warn"
+    } else {
+        "info"
+    };
+    env::set_var("RUST_LOG", &format!("vcsr={}", log_level));
     env_logger::builder().default_format_timestamp(false).init();
 
     let multi = MultiProgress::new();
@@ -64,13 +70,12 @@ fn main() {
         .stderr(Stdio::null())
         .output()
     {
-        Ok(_) => info!("ffmpeg installed. Continuing."),
+        Ok(_) => debug!("ffmpeg installed. Continuing."),
         Err(_) => {
-            eprintln!("ffmpeg not installed. Exiting.");
+            error!("ffmpeg not installed. Exiting.");
             std::process::exit(exitcode::SOFTWARE)
         }
     };
-    let args = args::application_args();
     let mut walker: WalkDir;
 
     for path in &args.filenames {
@@ -266,6 +271,7 @@ fn process_file(
         }
     }
 
+    args.num_selected = Some(args.grid.x * args.grid.y);
     if args.num_samples.is_none() {
         args.num_samples = args.num_selected;
     }
@@ -298,6 +304,11 @@ fn process_file(
     if let Some(grid_spacing) = args.grid_spacing {
         args.grid_horizontal_spacing = grid_spacing;
         args.grid_vertical_spacing = grid_spacing;
+    }
+
+    if args.actual_size {
+        let x = args.grid.x ;
+        args.vcs_width = x * media_attributes.dimensions.display_width.unwrap() + (x - 1) * args.grid_horizontal_spacing;
     }
 
     bar.inc(1);

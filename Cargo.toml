@@ -1,7 +1,7 @@
 [package]
 name = "vcsr"
 version = "0.1.0"
-authors = ["Jonathan Frankel <frankel.jb@gmail.com>"]
+authors = ["Jonathan Frankel <frankeljb@gmail.com>"]
 edition = "2018"
 
 [dependencies]

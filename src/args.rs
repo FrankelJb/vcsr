@@ -27,7 +27,7 @@ pub struct Args {
     #[structopt(long, default_value = "ffffff00", required = false)]
     pub background_colour: String,
 
-    ///Make thumbnails of actual size. In other words, thumbnails will hav e the actual 1:1 size of the video resolution.
+    ///Make thumbnails of actual size. In other words, thumbnails will have the actual 1:1 size of the video resolution.
     #[structopt(long, short = "S")]
     pub actual_size: bool,
 
@@ -55,7 +55,7 @@ pub struct Args {
     #[structopt(long)]
     pub frame_type: Option<String>,
 
-    #[structopt(multiple = true, last = true)]
+    #[structopt(multiple = true, required = true)]
     pub filenames: Vec<String>,
 
     /// display frames on a mxn grid (for example 4x5). The special value zero (as in 2x0 or 0x5 or 0x0) is only allowed when combined with --interval or with --manual. Zero means that the component should be automatically deduced based on other arguments passed.
