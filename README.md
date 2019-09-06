@@ -8,20 +8,21 @@ This application is a direct port of [vcsi](https://github.com/amietn/vcsi). Ful
 
 I am learning Rust and while working on another project, I required a contact sheet generator. The existing generators needed some other tools during installation and I wanted something that I could just drop in and use. The process allowed me to focus on the language's ergonomics rather than the algorithm.
 
+## Installation
+I wanted the installation process to be as simple as possible. Download the archive from the [releases](https://github.com/FrankelJb/vcsr/releases) for your platform (maybe Windows sometime in the future). Extract the binary and put it somewhere that's on your `$PATH`.
+
+### Requirements
+`ffmpeg` and `ffprobe` need to be installed.
+
 ## Usage
+### Examples
 The simplest usage is to run it with no extra arguments other than an input file. See the full list of arguments below for default values.
 ```
 $ vcsr bbb_sunflower_1080p_60fps_normal.mp4
 ```
-![Simple usage example](https://raw.githubusercontent.com/FrankelJb/vcsr/74fedf691f00ac2bbb5019373ef8ba2b64f275bc/bbb_sunflower_1080p_60fps_normal.mp4.jpg)
+![Simple usage example](https://raw.githubusercontent.com/FrankelJb/vcsr/a9f8c61c37505efd043b7b43e3aff4b723e23b51/bbb_sunflower_1080p_60fps_normal.mp4.jpg)
 
-# Installation
-I wanted the installation process to be as simple as possible. Download the archive from the (releases)[https://github.com/FrankelJb/vcsr/releases] for your platform (maybe Windows sometime in the future). Extract the binary and put it somewhere in to your `$PATH`.
-
-## Requirements
-`ffmpeg` and `ffprobe` need to be installed.
-
-## Arguments
+### Arguments
 ```
 $ vcsr -h
 vcsr 0.1.0

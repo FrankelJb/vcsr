@@ -79,6 +79,10 @@ fn main() {
     let mut walker: WalkDir;
 
     for path in &args.filenames {
+        if !Path::new(path).exists() {
+            error!("File does not exist, trying next: {}", path);
+            continue;
+        }
         if args.recursive {
             walker = WalkDir::new(path);
         } else {
@@ -307,8 +311,9 @@ fn process_file(
     }
 
     if args.actual_size {
-        let x = args.grid.x ;
-        args.vcs_width = x * media_attributes.dimensions.display_width.unwrap() + (x - 1) * args.grid_horizontal_spacing;
+        let x = args.grid.x;
+        args.vcs_width = x * media_attributes.dimensions.display_width.unwrap()
+            + (x - 1) * args.grid_horizontal_spacing;
     }
 
     bar.inc(1);
