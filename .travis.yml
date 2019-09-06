@@ -24,6 +24,7 @@ DEPLOY_TO_GITHUB: &DEPLOY_TO_GITHUB
     skip_cleanup: true
     on:
       branch: master
+      tags: true
 
 matrix:
   include:

@@ -13,3 +13,4 @@ The simplest usage is to run it with no extra arguments other than an input file
 ```
 $ vcsr bbbb_sunflower_1080p_60fps_normal.mp4
 ```
+![Simple usage example](https://raw.githubusercontent/FrankelJb/vcsr/74fedf691f00ac2bbb5019373ef8ba2b64f275bc/bbb_sunflower_1080p_60fps_normal.mp4.jpg)
