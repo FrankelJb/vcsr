@@ -542,11 +542,15 @@ impl MediaCapture {
         };
 
         let length = (percentage * matrix.len() as f32).floor() as usize;
-        let matrix_subset = &matrix[0..length];
-        if length % 2 == 0 {
-            (matrix_subset[length / 2 - 1] + matrix_subset[length / 2]) / 2.0
+        if length >= 2 {
+            let matrix_subset = &matrix[0..length];
+            if length % 2 == 0 {
+                (matrix_subset[length / 2 - 1] + matrix_subset[length / 2]) / 2.0
+            } else {
+                matrix_subset[(length - 1)] / 2.0
+            }
         } else {
-            matrix_subset[(length - 1)] / 2.0
+            0.0
         }
     }
 
