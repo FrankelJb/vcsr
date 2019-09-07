@@ -112,8 +112,7 @@ impl MediaInfo {
                 .output()?;
 
             if let Ok(stdout) = str::from_utf8(&output.stdout) {
-                // TODO: Handle this result
-                let f: Ffprobe = serde_json::from_str(stdout).unwrap();
+                let f: Ffprobe = serde_json::from_str(stdout).map_err(|e| CustomError::StreamError(e))?;
                 Ok(f)
             } else {
                 Err(CustomError::Io(io::Error::new(
@@ -674,7 +673,7 @@ fn default_sample_aspect_ratio() -> Option<String> {
 
 #[derive(Clone, Debug, Default, Deserialize)]
 pub struct Format {
-    bit_rate: String,
+    bit_rate: Option<String>,
     pub duration: String,
     filename: String,
     format_long_name: String,

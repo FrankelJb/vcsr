@@ -1,4 +1,5 @@
 use rusttype::Error as FontError;
+use serde_json::error as serde_json_error;
 use std::error::Error;
 use std::fmt;
 use std::io;
@@ -53,6 +54,7 @@ pub enum CustomError {
     MediaError,
     NoneError,
     RustTypeError(FontError),
+    StreamError(serde_json_error::Error),
     TimestampError(ArgumentError),
     VideoStreamError,
 }
@@ -69,6 +71,7 @@ impl fmt::Display for CustomError {
             CustomError::MediaError => write!(f, "Could not find all media attributes."),
             CustomError::NoneError => write!(f, "Could not unwrap None."),
             CustomError::RustTypeError(ref cause) => write!(f, "Rust Type Font Error: {}", cause),
+            CustomError::StreamError(ref cause) => write!(f, "Stream Error: {}", cause),
             CustomError::TimestampError(ref cause) => write!(f, "Invalid timestamps: {}", cause.cause),
             CustomError::VideoStreamError => write!(f, "The file does not contain a video stream.")
         }
@@ -88,6 +91,7 @@ impl Error for CustomError {
             CustomError::MediaError => None,
             CustomError::NoneError => None,
             CustomError::RustTypeError(ref cause) => Some(cause),
+            CustomError::StreamError(ref cause) => Some(cause),
             CustomError::TimestampError(ref cause) => Some(cause),
             CustomError::VideoStreamError => None,
         }
