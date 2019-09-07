@@ -683,6 +683,7 @@ pub struct Format {
     probe_score: i32,
     size: String,
     start_time: String,
+    #[serde(skip)]
     tags: FormatTags,
 }
 
