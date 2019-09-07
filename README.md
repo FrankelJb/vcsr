@@ -18,9 +18,9 @@ I wanted the installation process to be as simple as possible. Download the arch
 ### Examples
 The simplest usage is to run it with no extra arguments other than an input file. See the full list of arguments below for default values.
 ```
-$ vcsr bbb_sunflower_1080p_60fps_normal.mp4
+$ vcsr bbb_sunflower_2160p_60fps_normal.mp4
 ```
-![Simple usage example](https://raw.githubusercontent.com/FrankelJb/vcsr/a9f8c61c37505efd043b7b43e3aff4b723e23b51/bbb_sunflower_1080p_60fps_normal.mp4.jpg)
+![Simple usage example](https://raw.githubusercontent.com/FrankelJb/vcsr/fecb62cbe20a9dab4aec44be2a3926cd3df243a5/bbb_sunflower_2160p_60fps_normal.mp4.jpg)
 
 ### Arguments
 ```

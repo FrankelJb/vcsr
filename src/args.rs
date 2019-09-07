@@ -24,7 +24,7 @@ pub struct Args {
     pub accurate_delay_seconds: Option<f32>,
 
     /// Color of the timestamp background rectangle in hexadecimal, for example AABBCC
-    #[structopt(long, default_value = "39897e00", required = false)]
+    #[structopt(long, default_value = "39897eff", required = false)]
     pub background_colour: String,
 
     ///Make thumbnails of actual size. In other words, thumbnails will have the actual 1:1 size of the video resolution.
@@ -44,7 +44,7 @@ pub struct Args {
     pub end_delay_percent: f32,
 
     /// Do not process files that end with the given extensions.
-    #[structopt(long)]
+    #[structopt(long, default_value = "vec![\"nfo\", \"jpg\", \"png\", \"srt\", \"txt\"]")]
     pub exclude_extensions: Vec<String>,
 
     /// Fast mode. Just make a contact sheet as fast as possible, regardless of output image quality. May mess up the terminal.
@@ -99,7 +99,7 @@ pub struct Args {
     pub metadata_font_colour: String,
 
     /// Color of the metadata background in hexadecimal, for example AABBCC
-    #[structopt(long, default_value = "757bd3", required = false)]
+    #[structopt(long, default_value = "39897eff", required = false)]
     pub metadata_background_colour: String,
 
     /// size of the font used for metadata

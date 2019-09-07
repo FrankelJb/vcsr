@@ -476,7 +476,7 @@ pub fn compose_contact_sheet(
         desired_size.y + shadow_width,
         hex_background,
     );
-    let black_pixel = Rgba([0, 0, 0, 0]);
+    let black_pixel = Rgba([0, 0, 0, args.capture_alpha]);
     imageproc::drawing::draw_filled_rect_mut(
         &mut rect,
         Rect::at(shadow_width as i32 / 2, shadow_width as i32 / 2)
@@ -488,10 +488,12 @@ pub fn compose_contact_sheet(
     for (i, frame) in frames.iter().enumerate() {
         let mut f = image::open(&Path::new(&frame.filename)).unwrap().to_rgba();
 
+        putalpha(&mut f, args.capture_alpha);
+
         if !args.no_shadow {
-            image::imageops::replace(&mut image, &mut blurred, x, y);
+            image::imageops::overlay(&mut image, &mut blurred, x, y);
         }
-        image::imageops::replace(&mut image, &mut f, x, y);
+        image::imageops::overlay(&mut image, &mut f, x, y);
 
         if args.show_timestamp {
             let timestamp_time = MediaInfo::pretty_duration(frame.timestamp, true, false);
@@ -594,7 +596,7 @@ pub fn compose_contact_sheet(
             image::imageops::replace(&mut image, &mut metadata_image, 0, y);
         }
         MetadataPosition::Hidden => {
-            info!("Metadata hidden");
+            debug!("Metadata hidden");
         }
     }
     Ok(image)
@@ -620,7 +622,7 @@ fn decode_hex(s: &str) -> Result<Rgba<u8>, CustomError> {
 }
 
 fn putalpha(image: &mut RgbaImage, alpha: u8) {
-    for (_, _, pixel) in image.enumerate_pixels_mut() {
+    for pixel in image.pixels_mut() {
         match pixel {
             image::Rgba { data: rgba } => {
                 (*pixel = image::Rgba([rgba[0], rgba[1], rgba[2], alpha]))
