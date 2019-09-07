@@ -44,7 +44,7 @@ pub struct Args {
     pub end_delay_percent: f32,
 
     /// Do not process files that end with the given extensions.
-    #[structopt(long, default_value = "vec![\"nfo\", \"jpg\", \"png\", \"srt\", \"txt\"]")]
+    #[structopt(long)]
     pub exclude_extensions: Vec<String>,
 
     /// Fast mode. Just make a contact sheet as fast as possible, regardless of output image quality. May mess up the terminal.
@@ -223,7 +223,7 @@ pub struct Args {
     #[structopt(long = "width", short = "w", default_value = "1500", required = false)]
     pub vcs_width: u32,
 
-    /// display verbose messages
+    /// log to stdout as well as to the log file.
     #[structopt(long, short)]
     pub verbose: bool,
 }

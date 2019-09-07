@@ -112,7 +112,8 @@ impl MediaInfo {
                 .output()?;
 
             if let Ok(stdout) = str::from_utf8(&output.stdout) {
-                let f: Ffprobe = serde_json::from_str(stdout).map_err(|e| CustomError::StreamError(e))?;
+                let f: Ffprobe =
+                    serde_json::from_str(stdout).map_err(|e| CustomError::StreamError(e))?;
                 Ok(f)
             } else {
                 Err(CustomError::Io(io::Error::new(

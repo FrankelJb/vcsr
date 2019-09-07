@@ -7,6 +7,7 @@ extern crate exitcode;
 extern crate image;
 #[macro_use]
 extern crate log;
+extern crate num_cpus;
 extern crate palette;
 extern crate rand;
 extern crate rayon;
@@ -20,14 +21,13 @@ mod errors;
 mod models;
 mod operations;
 
-use flexi_logger::{Logger, opt_format};
+use flexi_logger::{opt_format, Cleanup, Criterion, Logger, Naming};
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use std::{
     ffi::OsStr,
     io,
     path::{Path, PathBuf},
     process::{Command, Stdio},
-    thread,
 };
 use walkdir::{DirEntry, WalkDir};
 
@@ -52,12 +52,17 @@ use walkdir::{DirEntry, WalkDir};
 fn main() {
     let args = args::application_args();
 
-    Logger::with_str("vcsr=debug,info,warn")
-                .log_to_file()
-                .duplicate_to_stderr(flexi_logger::Duplicate::Info)
-                .directory(dirs::home_dir().unwrap().join(".vcsr").join("logs"))
-                .format(opt_format).start()
-                .unwrap();
+    let log_level = match &args.verbose {
+        true => String::from("debug,info,warn,error"),
+        false => String::from("info,warn,error"),
+    };
+    Logger::with_str(log_level)
+        .log_to_file()
+        .directory(dirs::home_dir().unwrap().join(".vcsr").join("logs"))
+        .rotate(Criterion::Size(20000), Naming::Numbers, Cleanup::Never)
+        .format(opt_format)
+        .start()
+        .unwrap();
 
     let multi = MultiProgress::new();
     let bar_style = ProgressStyle::default_bar()
@@ -70,14 +75,17 @@ fn main() {
         .stderr(Stdio::null())
         .output()
     {
-        Ok(_) => debug!("ffmpeg installed. Continuing."),
+        Ok(_) => info!("ffmpeg installed. Continuing."),
         Err(_) => {
             error!("ffmpeg not installed. Exiting.");
             std::process::exit(exitcode::SOFTWARE)
         }
     };
     let mut walker: WalkDir;
-
+    let pool = rayon::ThreadPoolBuilder::new()
+        .num_threads(num_cpus::get() * 2)
+        .build()
+        .unwrap();
     for path in &args.filenames {
         if !Path::new(path).exists() {
             error!("File does not exist, trying next: {}", path);
@@ -107,18 +115,22 @@ fn main() {
             bar.set_style(bar_style.clone());
             let mut current_args = args.clone();
             let entry_copy = entry.clone();
-            let _ = thread::spawn(move || match process_file(entry, &mut current_args, &bar) {
+            let _ = pool.spawn(move || match process_file(entry, &mut current_args, &bar) {
                 Ok(file_name) => {
                     let m = format!(
                         "succesfully created {}",
-                        file_name.file_name().unwrap().to_string_lossy());
+                        file_name.file_name().unwrap().to_string_lossy()
+                    );
 
-                    debug!("{}", &m);
+                    info!("{}", &m);
                     bar.finish_with_message(&m);
                 }
                 Err(err) => {
-                    error!("Skipped {}: {}", entry_copy.file_name().to_string_lossy().to_owned(), err.to_string());
-                    // std::process::exit(-1);
+                    error!(
+                        "Skipped {}: {}",
+                        entry_copy.file_name().to_string_lossy().to_owned(),
+                        err.to_string()
+                    );
                 }
             });
         }
@@ -140,7 +152,7 @@ fn process_file(
 
     if !dir_entry.path().exists() {
         if args.ignore_errors {
-            debug!("File does not exist, skipping {}: ", file_name_str);
+            info!("File does not exist, skipping {}: ", file_name_str);
             return Ok(dir_entry.path().to_path_buf());
         } else {
             return Err(errors::CustomError::Io(io::Error::new(
@@ -171,7 +183,7 @@ fn process_file(
 
     if args.no_overwrite {
         if Path::new(&output_path).exists() {
-            debug!(
+            info!(
                 "contact sheet already exists, skipping {}",
                 &output_path.to_string_lossy().to_owned().to_owned()
             );
@@ -337,7 +349,7 @@ fn process_file(
         if !Path::new(thumbnail_output_path).exists() {
             std::fs::create_dir_all(thumbnail_output_path)?;
         }
-        debug!("Copying thumbnails to {}", thumbnail_output_path);
+        info!("Copying thumbnails to {}", thumbnail_output_path);
         for (i, frame) in selected_frames.iter().enumerate() {
             let thumbnail_file_extension = Path::new(&frame.filename).extension().unwrap();
             let thumbnail_filename = format!(
