@@ -1,6 +1,6 @@
 use crate::args::Args;
 use crate::constants::*;
-use crate::errors::{ColourError, CustomError};
+use crate::errors::{ColourError, VcsrError};
 use crate::models::{
     Dimensions, Frame, Grid, MediaAttributes, MediaCapture, MediaInfo, MetadataPosition,
     TimestampPosition,
@@ -8,7 +8,6 @@ use crate::models::{
 
 use image::{GenericImage, ImageBuffer, Rgba, RgbaImage};
 use imageproc::{drawing::draw_text_mut, rect::Rect};
-use indicatif::ProgressBar;
 use rand::{distributions::Alphanumeric, thread_rng, Rng};
 use rayon::prelude::*;
 use rusttype::{point, Font, FontCollection, Point, PositionedGlyph, Scale};
@@ -69,8 +68,7 @@ pub fn select_sharpest_images(
     media_attributes: &MediaAttributes,
     media_capture: &MediaCapture,
     args: &Args,
-    bar: &ProgressBar,
-) -> Result<(Vec<Frame>, Vec<Frame>), CustomError> {
+) -> Result<(Vec<Frame>, Vec<Frame>), VcsrError> {
     let desired_size = grid_desired_size(
         &args.grid,
         &media_attributes.dimensions,
@@ -84,15 +82,12 @@ pub fn select_sharpest_images(
         args.manual_timestamps.clone()
     };
 
-    let do_capture = |task_number: usize,
-                      ts_tuple: (f32, String),
+    let do_capture = |ts_tuple: (f32, String),
                       width: u32,
                       height: u32,
                       suffix: &str,
                       args: &Args|
-     -> Result<Frame, CustomError> {
-        bar.set_message(&format!("Creating capture {}", task_number));
-        bar.inc(1);
+     -> Result<Frame, VcsrError> {
         let rand_string: String = thread_rng().sample_iter(&Alphanumeric).take(7).collect();
         let mut dir = env::temp_dir();
         let filename = format!("tmp{}{}", rand_string, suffix);
@@ -113,12 +108,10 @@ pub fn select_sharpest_images(
         })
     };
 
-    let blurs: Result<Vec<Frame>, CustomError> = timestamps
+    let blurs: Result<Vec<Frame>, VcsrError> = timestamps
         .into_par_iter()
-        .enumerate()
-        .map(|(i, ts)| {
+        .map(|ts| {
             do_capture(
-                i,
                 (MediaInfo::pretty_to_seconds(&ts)?, ts),
                 desired_size.x,
                 desired_size.y,
@@ -312,7 +305,7 @@ pub fn compute_timestamp_position(
     (upper_left, size)
 }
 
-pub fn load_font<'a>(font_path_str: &str) -> Result<Font<'a>, CustomError> {
+pub fn load_font<'a>(font_path_str: &str) -> Result<Font<'a>, VcsrError> {
     let font_path = Path::new(font_path_str);
     if font_path.exists() {
         let mut file = File::open(font_path).unwrap();
@@ -321,9 +314,9 @@ pub fn load_font<'a>(font_path_str: &str) -> Result<Font<'a>, CustomError> {
         FontCollection::from_bytes(data)
             .unwrap()
             .into_font()
-            .map_err(|e| CustomError::RustTypeError(e))
+            .map_err(|e| VcsrError::RustTypeError(e))
     } else {
-        Err(CustomError::Io(std::io::Error::new(
+        Err(VcsrError::Io(std::io::Error::new(
             std::io::ErrorKind::NotFound,
             format!("file does not found {}", font_path_str),
         )))
@@ -338,7 +331,7 @@ pub fn draw_metadata<'a>(
     header_font_colour: Rgba<u8>,
     header_font_size: f32,
     header_font: &'a Font<'a>,
-) -> Result<u32, CustomError> {
+) -> Result<u32, VcsrError> {
     let mut h = args.grid_vertical_spacing;
     let scale = Scale::uniform(header_font_size);
     for line in header_lines {
@@ -385,7 +378,7 @@ pub fn compose_contact_sheet(
     media_attributes: &MediaAttributes,
     frames: &mut Vec<Frame>,
     args: &Args,
-) -> Result<ImageBuffer<Rgba<u8>, Vec<u8>>, CustomError> {
+) -> Result<ImageBuffer<Rgba<u8>, Vec<u8>>, VcsrError> {
     let dimensions = &media_attributes.dimensions;
     let desired_size = grid_desired_size(
         &args.grid,
@@ -405,7 +398,7 @@ pub fn compose_contact_sheet(
             FontCollection::from_bytes(data)
                 .unwrap()
                 .into_font()
-                .map_err(|e| CustomError::RustTypeError(e))?
+                .map_err(|e| VcsrError::RustTypeError(e))?
         }
     };
     let timestamp_font = match &args.timestamp_font {
@@ -415,7 +408,7 @@ pub fn compose_contact_sheet(
             FontCollection::from_bytes(data)
                 .unwrap()
                 .into_font()
-                .map_err(|e| CustomError::RustTypeError(e))?
+                .map_err(|e| VcsrError::RustTypeError(e))?
         }
     };
     let timestamp_font_scale = Scale::uniform(args.timestamp_font_size);
@@ -602,9 +595,9 @@ pub fn compose_contact_sheet(
     Ok(image)
 }
 
-fn decode_hex(s: &str) -> Result<Rgba<u8>, CustomError> {
+fn decode_hex(s: &str) -> Result<Rgba<u8>, VcsrError> {
     if s.len() % 2 != 0 {
-        Err(CustomError::ColourError(ColourError {
+        Err(VcsrError::ColourError(ColourError {
             cause: "cannot decode odd length colours".to_string(),
         }))
     } else {

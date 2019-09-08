@@ -1,4 +1,7 @@
-use crate::models::{Grid, MetadataPosition, TimestampPosition};
+use crate::{
+    constants::*,
+    models::{Grid, MetadataPosition, TimestampPosition},
+};
 use clap::AppSettings;
 use humantime::DurationError;
 use std::time::Duration;
@@ -20,16 +23,16 @@ pub struct Args {
     pub accurate: bool,
 
     /// Fast skip to N seconds before capture time, then do accurate capture (decodes N seconds of video before each capture). This is used with accurate capture mode only.
-    #[structopt(long, short = "A")]
-    pub accurate_delay_seconds: Option<f32>,
-
-    /// Color of the timestamp background rectangle in hexadecimal, for example AABBCC
-    #[structopt(long, default_value = "39897eff", required = false)]
-    pub background_colour: String,
+    #[structopt(long, short = "A", required = false, default_value = "1.0")]
+    pub accurate_delay_seconds: f32,
 
     ///Make thumbnails of actual size. In other words, thumbnails will have the actual 1:1 size of the video resolution.
     #[structopt(long, short = "S")]
     pub actual_size: bool,
+
+    /// Color of the timestamp background rectangle in hexadecimal, for example AABBCC
+    #[structopt(long, default_value = "39897eff", required = false)]
+    pub background_colour: String,
 
     /// Alpha channel value for the captures (transparency in range [0, 255]). Defaults to 255 (opaque)
     #[structopt(long, default_value = "255", required = false)]
@@ -90,6 +93,10 @@ pub struct Args {
     #[structopt(long = "manual", short = "m", required = false)]
     pub manual_timestamps: Vec<String>,
 
+    /// Color of the metadata background in hexadecimal, for example AABBCC
+    #[structopt(long, default_value = "39897eff", required = false)]
+    pub metadata_background_colour: String,
+
     /// Path to TTF font used for metadata
     #[structopt(long)]
     pub metadata_font: Option<String>,
@@ -97,10 +104,6 @@ pub struct Args {
     /// Color of the metadata font in hexadecimal, for example AABBCC
     #[structopt(long, default_value = "ffffff00", required = false)]
     pub metadata_font_colour: String,
-
-    /// Color of the metadata background in hexadecimal, for example AABBCC
-    #[structopt(long, default_value = "39897eff", required = false)]
-    pub metadata_background_colour: String,
 
     /// size of the font used for metadata
     #[structopt(long, default_value = "32", required = false)]
@@ -125,7 +128,7 @@ pub struct Args {
     pub metadata_position: MetadataPosition,
 
     /// Vertical margin (in pixels) in the metadata header.
-    #[structopt(long, default_value = "10", required = false)]
+    #[structopt(long, default_value = "15", required = false)]
     pub metadata_vertical_margin: u32,
 
     /// Do not overwrite output file if it already exists, simply ignore this file and continue processing other unprocessed files.
@@ -231,6 +234,70 @@ pub struct Args {
 impl Args {
     fn num_samples(grid: Grid) -> Option<u32> {
         Some(grid.x * grid.y)
+    }
+}
+
+impl Default for Args {
+    fn default() -> Self {
+        Self {
+            num_groups: None,
+            num_selected: None,
+            accurate: false,
+            accurate_delay_seconds: DEFAULT_ACCURATE_DELAY_SECONDS,
+            background_colour: String::from(DEFAULT_BACKGROUND_COLOUR),
+            actual_size: false,
+            capture_alpha: DEFAULT_CAPTURE_ALPHA,
+            delay_percent: DEFAULT_DELAY_PERCENT,
+            end_delay_percent: DEFAULT_END_DELAY_PERCENT,
+            exclude_extensions: vec![
+                String::from("jpg"),
+                String::from("txt"),
+                String::from("srt"),
+                String::from("png"),
+            ],
+            fast: false,
+            frame_type: DEFAULT_FRAME_TYPE,
+            filenames: vec![],
+            grid: DEFAULT_GRID_SIZE,
+            grid_spacing: DEFAULT_GRID_SPACING,
+            grid_horizontal_spacing: DEFAULT_GRID_HORIZONTAL_SPACING,
+            grid_vertical_spacing: DEFAULT_GRID_VERTICAL_SPACING,
+            image_format: String::from(DEFAULT_IMAGE_FORMAT),
+            ignore_errors: false,
+            interval: DEFAULT_INTERVAL,
+            manual_timestamps: vec![],
+            metadata_background_colour: String::from(DEFAULT_BACKGROUND_COLOUR),
+            metadata_font: DEFAULT_METADATA_FONT,
+            metadata_font_colour: String::from(DEFAULT_METADATA_FONT_COLOUR),
+            metadata_font_size: DEFAULT_METADATA_FONT_SIZE,
+            metadata_horizontal_margin: DEFAULT_METADATA_HORIZONTAL_MARGIN,
+            metadata_margin: DEFAULT_METADATA_MARGIN,
+            metadata_position: DEFAULT_METADATA_POSITION,
+            metadata_vertical_margin: DEFAULT_METADATA_VERTICAL_MARGIN,
+            no_overwrite: false,
+            output_path: None,
+            recursive: false,
+            num_samples: None,
+            no_shadow: false,
+            start_delay_percent: DEFAULT_START_DELAY_PERCENT,
+            show_timestamp: true,
+            thumbnail_output_path: None,
+            timestamp_background_colour: String::from(DEFAULT_TIMESTAMP_BACKGROUND_COLOUR),
+            timestamp_border_colour: String::from(DEFAULT_TIMESTAMP_BORDER_COLOUR),
+            timestamp_border_mode: false,
+            timestamp_border_radius: 1.0,
+            timestamp_border_size: 1,
+            timestamp_font: None,
+            timestamp_font_colour: String::from(DEFAULT_TIMESTAMP_FONT_COLOUR),
+            timestamp_font_size: DEFAULT_TIMESTAMP_FONT_SIZE,
+            timestamp_position: DEFAULT_TIMESTAMP_POSITION,
+            timestamp_horizontal_margin: DEFAULT_TIMESTAMP_HORIZONTAL_MARGIN,
+            timestamp_horizontal_padding: DEFAULT_TIMESTAMP_HORIZONTAL_PADDING,
+            timestamp_vertical_margin: DEFAULT_TIMESTAMP_VERTICAL_MARGIN,
+            timestamp_vertical_padding: DEFAULT_TIMESTAMP_VERTICAL_PADDING,
+            vcs_width: DEFAULT_CONTACT_SHEET_WIDTH,
+            verbose: false,
+        }
     }
 }
 

@@ -1,5 +1,5 @@
 use crate::constants::*;
-use crate::errors::CustomError;
+use crate::errors::VcsrError;
 use clap::arg_enum;
 use image;
 use serde::Deserialize;
@@ -36,13 +36,13 @@ impl fmt::Display for Grid {
 }
 
 impl FromStr for Grid {
-    type Err = CustomError;
+    type Err = VcsrError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let mxn_result: Result<Vec<u32>, _> = s.split("x").map(|m| m.parse::<u32>()).collect();
         let mxn = mxn_result?;
         if mxn.len() > 2 {
-            Err(CustomError::GridShape)
+            Err(VcsrError::GridShape)
         } else {
             Ok(Grid {
                 x: mxn[0],
@@ -90,7 +90,7 @@ pub struct Dimensions {
 }
 
 impl MediaInfo {
-    pub fn new(path: &Path, _verbose: bool) -> Result<MediaInfo, CustomError> {
+    pub fn new(path: &Path, _verbose: bool) -> Result<MediaInfo, VcsrError> {
         let ffprobe = Self::probe_media(path)?;
         let media_attributes = Self::create_media_attributes(&ffprobe)?;
         Ok(MediaInfo {
@@ -99,7 +99,7 @@ impl MediaInfo {
         })
     }
 
-    pub fn probe_media(path: &Path) -> Result<Ffprobe, CustomError> {
+    pub fn probe_media(path: &Path) -> Result<Ffprobe, VcsrError> {
         if path.exists() {
             let output = Command::new("ffprobe")
                 .arg("-v")
@@ -113,16 +113,16 @@ impl MediaInfo {
 
             if let Ok(stdout) = str::from_utf8(&output.stdout) {
                 let f: Ffprobe =
-                    serde_json::from_str(stdout).map_err(|e| CustomError::StreamError(e))?;
+                    serde_json::from_str(stdout).map_err(|e| VcsrError::StreamError(e))?;
                 Ok(f)
             } else {
-                Err(CustomError::Io(io::Error::new(
+                Err(VcsrError::Io(io::Error::new(
                     io::ErrorKind::Other,
                     "ffprobe crashed unexpectedly",
                 )))
             }
         } else {
-            Err(CustomError::Io(io::Error::new(
+            Err(VcsrError::Io(io::Error::new(
                 io::ErrorKind::Other,
                 "cannot find requested video file",
             )))
@@ -149,7 +149,7 @@ impl MediaInfo {
         })
     }
 
-    pub fn compute_display_resolution(ffprobe: &Ffprobe) -> Result<Dimensions, CustomError> {
+    pub fn compute_display_resolution(ffprobe: &Ffprobe) -> Result<Dimensions, VcsrError> {
         let video_stream = Self::find_video_stream(ffprobe).unwrap().clone();
         if let Stream::VideoStream(video_stream) = video_stream {
             let mut display_height: Option<u32>;
@@ -167,7 +167,7 @@ impl MediaInfo {
 
             let sample_aspect_ratio = video_stream
                 .sample_aspect_ratio
-                .ok_or(CustomError::NoneError)?;
+                .ok_or(VcsrError::NoneError)?;
             if sample_aspect_ratio == "1:1" {
                 display_width = sample_width;
                 display_height = sample_height;
@@ -208,7 +208,7 @@ impl MediaInfo {
                 sample_width: sample_width,
             });
         }
-        Err(CustomError::VideoStreamError)
+        Err(VcsrError::VideoStreamError)
     }
 
     pub fn compute_duration(ffprobe: &Ffprobe) -> Option<(f32, String)> {
@@ -276,7 +276,7 @@ impl MediaInfo {
         duration
     }
 
-    pub fn pretty_to_seconds(pretty_duration: &str) -> Result<f32, CustomError> {
+    pub fn pretty_to_seconds(pretty_duration: &str) -> Result<f32, VcsrError> {
         let millis_split: Vec<&str> = pretty_duration.split(".").collect();
         let mut millis = 0.0;
         let left;
@@ -336,7 +336,7 @@ impl MediaInfo {
     }
 
     // Parse multiple media attributes
-    pub fn create_media_attributes(ffprobe: &Ffprobe) -> Result<MediaAttributes, CustomError> {
+    pub fn create_media_attributes(ffprobe: &Ffprobe) -> Result<MediaAttributes, VcsrError> {
         let dimensions = Self::compute_display_resolution(&ffprobe)?;
         let (duration_seconds, duration) = Self::compute_duration(&ffprobe).unwrap();
         let filename = Self::compute_filename(&ffprobe);
@@ -394,13 +394,9 @@ impl MediaCapture {
     pub fn new(
         path: String,
         accurate: bool,
-        skip_delay_seconds: Option<f32>,
+        skip_delay_seconds: f32,
         frame_type: Option<String>,
     ) -> MediaCapture {
-        let skip_delay_seconds = match skip_delay_seconds {
-            Some(s) => s,
-            None => DEFAULT_ACCURATE_DELAY_SECONDS,
-        };
         MediaCapture {
             path: path,
             accurate: accurate,
@@ -417,7 +413,7 @@ impl MediaCapture {
         width: u32,
         height: u32,
         out_path: Option<&str>,
-    ) -> Result<(), CustomError> {
+    ) -> Result<(), VcsrError> {
         let skip_delay = MediaInfo::pretty_duration(self.skip_delay_seconds, false, true);
         let out_path = match out_path {
             Some(o) => o,
@@ -469,7 +465,7 @@ impl MediaCapture {
         Ok(())
     }
 
-    pub fn compute_avg_colour(image_path: &str) -> Result<f32, CustomError> {
+    pub fn compute_avg_colour(image_path: &str) -> Result<f32, VcsrError> {
         if Path::new(image_path).exists() {
             let image = image::open(image_path).unwrap().to_rgba();
             let rgbs: (f32, f32, f32) =
@@ -485,14 +481,14 @@ impl MediaCapture {
             let size = image.width() as f32 * image.height() as f32;
             Ok((rgbs.0 / size + rgbs.1 / size + rgbs.2 / size) / 3.0)
         } else {
-            Err(CustomError::Io(io::Error::new(
+            Err(VcsrError::Io(io::Error::new(
                 io::ErrorKind::NotFound,
                 "Cannot compute average colour as capture file was not created",
             )))
         }
     }
 
-    pub fn compute_blurrines(image_path: &str) -> Result<f32, CustomError> {
+    pub fn compute_blurrines(image_path: &str) -> Result<f32, VcsrError> {
         if Path::new(image_path).exists() {
             let f = std::fs::File::open(image_path).unwrap();
             drop(f);
@@ -528,7 +524,7 @@ impl MediaCapture {
                 return Ok(1.0);
             }
         } else {
-            Err(CustomError::Io(io::Error::new(
+            Err(VcsrError::Io(io::Error::new(
                 io::ErrorKind::NotFound,
                 "Cannot compute blurriness as capture file was not created",
             )))
@@ -746,7 +742,7 @@ mod tests {
     fn grid_from_invalid_string_length() {
         // specific errors would be better
         // but I don't feel like implementing
-        // PartialEq for CustomError right now.
+        // PartialEq for VcsrError right now.
         let g = Grid::from_str("2x3x4");
         assert!(g.is_err());
     }

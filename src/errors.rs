@@ -44,7 +44,7 @@ impl Error for ColourError {
 }
 
 #[derive(Debug)]
-pub enum CustomError {
+pub enum VcsrError {
     ArgumentError(ArgumentError),
     ColourError(ColourError),
     GridShape,
@@ -60,64 +60,64 @@ pub enum CustomError {
 }
 
 // Allow the use of "{}" format specifier
-impl fmt::Display for CustomError {
+impl fmt::Display for VcsrError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
-            CustomError::ArgumentError(ref cause) => write!(f, "Arguments are invalid: {}", cause),
-            CustomError::ColourError(ref cause) => write!(f, "Input colour was invalid: {}", cause),            CustomError::GridShape => write!(f, "Grid must be of the form mxn, where m is the number of columns and n is the number of rows."),
-            CustomError::FloatError(ref cause) => write!(f, "Parse Float Error: {}", cause),
-            CustomError::IntError(ref cause) => write!(f, "Parse Int Error: {}", cause),
-            CustomError::Io(ref cause) => write!(f, "IO Error: {}", cause),
-            CustomError::MediaError => write!(f, "Could not find all media attributes."),
-            CustomError::NoneError => write!(f, "Could not unwrap None."),
-            CustomError::RustTypeError(ref cause) => write!(f, "Rust Type Font Error: {}", cause),
-            CustomError::StreamError(ref cause) => write!(f, "Stream Error: {}", cause),
-            CustomError::TimestampError(ref cause) => write!(f, "Invalid timestamps: {}", cause.cause),
-            CustomError::VideoStreamError => write!(f, "The file does not contain a video stream.")
+            VcsrError::ArgumentError(ref cause) => write!(f, "Arguments are invalid: {}", cause),
+            VcsrError::ColourError(ref cause) => write!(f, "Input colour was invalid: {}", cause),            VcsrError::GridShape => write!(f, "Grid must be of the form mxn, where m is the number of columns and n is the number of rows."),
+            VcsrError::FloatError(ref cause) => write!(f, "Parse Float Error: {}", cause),
+            VcsrError::IntError(ref cause) => write!(f, "Parse Int Error: {}", cause),
+            VcsrError::Io(ref cause) => write!(f, "IO Error: {}", cause),
+            VcsrError::MediaError => write!(f, "Could not find all media attributes."),
+            VcsrError::NoneError => write!(f, "Could not unwrap None."),
+            VcsrError::RustTypeError(ref cause) => write!(f, "Rust Type Font Error: {}", cause),
+            VcsrError::StreamError(ref cause) => write!(f, "Stream Error: {}", cause),
+            VcsrError::TimestampError(ref cause) => write!(f, "Invalid timestamps: {}", cause.cause),
+            VcsrError::VideoStreamError => write!(f, "The file does not contain a video stream.")
         }
     }
 }
 
 // Allow this type to be treated like an error
-impl Error for CustomError {
+impl Error for VcsrError {
     fn cause(&self) -> Option<&dyn Error> {
         match *self {
-            CustomError::ArgumentError(ref cause) => Some(cause),
-            CustomError::ColourError(ref cause) => Some(cause),
-            CustomError::GridShape => None,
-            CustomError::FloatError(ref cause) => Some(cause),
-            CustomError::IntError(ref cause) => Some(cause),
-            CustomError::Io(ref cause) => Some(cause),
-            CustomError::MediaError => None,
-            CustomError::NoneError => None,
-            CustomError::RustTypeError(ref cause) => Some(cause),
-            CustomError::StreamError(ref cause) => Some(cause),
-            CustomError::TimestampError(ref cause) => Some(cause),
-            CustomError::VideoStreamError => None,
+            VcsrError::ArgumentError(ref cause) => Some(cause),
+            VcsrError::ColourError(ref cause) => Some(cause),
+            VcsrError::GridShape => None,
+            VcsrError::FloatError(ref cause) => Some(cause),
+            VcsrError::IntError(ref cause) => Some(cause),
+            VcsrError::Io(ref cause) => Some(cause),
+            VcsrError::MediaError => None,
+            VcsrError::NoneError => None,
+            VcsrError::RustTypeError(ref cause) => Some(cause),
+            VcsrError::StreamError(ref cause) => Some(cause),
+            VcsrError::TimestampError(ref cause) => Some(cause),
+            VcsrError::VideoStreamError => None,
         }
     }
 }
 
-impl From<io::Error> for CustomError {
+impl From<io::Error> for VcsrError {
     fn from(error: io::Error) -> Self {
-        CustomError::Io(error)
+        VcsrError::Io(error)
     }
 }
 
-impl From<ParseFloatError> for CustomError {
+impl From<ParseFloatError> for VcsrError {
     fn from(error: ParseFloatError) -> Self {
-        CustomError::FloatError(error)
+        VcsrError::FloatError(error)
     }
 }
 
-impl From<ParseIntError> for CustomError {
+impl From<ParseIntError> for VcsrError {
     fn from(error: ParseIntError) -> Self {
-        CustomError::IntError(error)
+        VcsrError::IntError(error)
     }
 }
 
-impl From<FontError> for CustomError {
+impl From<FontError> for VcsrError {
     fn from(error: FontError) -> Self {
-        CustomError::RustTypeError(error)
+        VcsrError::RustTypeError(error)
     }
 }
