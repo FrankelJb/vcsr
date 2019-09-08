@@ -620,6 +620,8 @@ pub enum Stream {
     AudioStream(StreamStruct),
     #[serde(rename = "subtitle")]
     SubtitleStream(StreamStruct),
+    #[serde(rename = "data")]
+    DataStream(StreamStruct),
 }
 
 #[derive(Clone, Default, Debug, Deserialize)]
