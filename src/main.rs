@@ -16,17 +16,23 @@ use walkdir::WalkDir;
 pub fn main() {
     let args = args::application_args();
 
-    let log_level = match &args.verbose {
-        true => String::from("debug,info,warn,error"),
-        false => String::from("info,warn,error"),
+    match &args.verbose {
+        true => {
+            Logger::with_str(String::from("debug,info,warn,error"))
+                .format(opt_format)
+                .start()
+                .unwrap();
+        }
+        false => {
+            Logger::with_str(String::from("info,warn,error"))
+                .log_to_file()
+                .directory(dirs::home_dir().unwrap().join(".vcsr").join("logs"))
+                .rotate(Criterion::Size(20000), Naming::Numbers, Cleanup::Never)
+                .format(opt_format)
+                .start()
+                .unwrap();
+        }
     };
-    Logger::with_str(log_level)
-        .log_to_file()
-        .directory(dirs::home_dir().unwrap().join(".vcsr").join("logs"))
-        .rotate(Criterion::Size(20000), Naming::Numbers, Cleanup::Never)
-        .format(opt_format)
-        .start()
-        .unwrap();
 
     let multi = MultiProgress::new();
     let bar_style = ProgressStyle::default_bar()

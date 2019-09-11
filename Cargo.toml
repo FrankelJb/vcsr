@@ -4,6 +4,15 @@ version = "0.3.0"
 authors = ["Jonathan Frankel <frankeljb@gmail.com>"]
 edition = "2018"
 
+
+[lib]
+name = "vcsr"
+path = "src/lib.rs"
+
+[[bin]]
+name = "vcsr"
+path = "src/main.rs"
+
 [dependencies]
 chrono = "0.4.7"
 clap = "2.33.0"

@@ -641,7 +641,7 @@ pub struct StreamStruct {
     display_aspect_ratio: Option<String>,
     #[serde(skip)]
     disposition: Disposition,
-    duration_ts: Option<u32>,
+    duration_ts: Option<u64>,
     duration: Option<String>,
     field_order: Option<String>,
     has_b_frames: Option<u32>,
@@ -732,6 +732,7 @@ arg_enum! {
 #[cfg(test)]
 mod tests {
     use super::*;
+
     #[test]
     fn grid_from_string() {
         let g = Grid::from_str("2x2");
@@ -763,5 +764,19 @@ mod tests {
             assert_eq!(hrs, MediaInfo::human_readable_size(size));
             size = size * 1024.0;
         }
+    }
+
+    #[test]
+    fn test_stream_json() {
+        let file = include_str!("../test/resources/test.stream.json");
+        let f: Ffprobe = serde_json::from_str(file)
+            .map_err(|e| VcsrError::StreamError(e))
+            .unwrap();
+        assert!(f.streams.len() > 0);
+        let _media_attributes = MediaInfo::create_media_attributes(&f).unwrap();
+        // Ok(MediaInfo {
+        //     ffprobe: ffprobe,
+        //     media_attributes: Some(media_attributes),
+        // })
     }
 }
