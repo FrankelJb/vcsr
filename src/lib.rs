@@ -18,7 +18,7 @@ extern crate textwrap;
 pub mod args;
 mod constants;
 pub mod errors;
-mod models;
+pub mod models;
 mod operations;
 
 use std::{

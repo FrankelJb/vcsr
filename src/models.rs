@@ -463,7 +463,7 @@ impl MediaCapture {
             error!("ffmpeg error: {}", str::from_utf8(&output.stderr).unwrap());
         }
         Ok(())
-    }
+        }
 
     pub fn compute_avg_colour(image_path: &str) -> Result<f32, VcsrError> {
         if Path::new(image_path).exists() {
@@ -627,7 +627,7 @@ pub struct StreamStruct {
     bit_rate: Option<String>,
     chroma_location: Option<String>,
     codec_long_name: Option<String>,
-    codec_name: Option<String>,
+    pub codec_name: Option<String>,
     codec_tag: Option<String>,
     codec_tag_string: Option<String>,
     codec_time_base: Option<String>,
@@ -764,19 +764,5 @@ mod tests {
             assert_eq!(hrs, MediaInfo::human_readable_size(size));
             size = size * 1024.0;
         }
-    }
-
-    #[test]
-    fn test_stream_json() {
-        let file = include_str!("../test/resources/test.stream.json");
-        let f: Ffprobe = serde_json::from_str(file)
-            .map_err(|e| VcsrError::StreamError(e))
-            .unwrap();
-        assert!(f.streams.len() > 0);
-        let _media_attributes = MediaInfo::create_media_attributes(&f).unwrap();
-        // Ok(MediaInfo {
-        //     ffprobe: ffprobe,
-        //     media_attributes: Some(media_attributes),
-        // })
     }
 }
