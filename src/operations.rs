@@ -1,6 +1,6 @@
 use crate::args::Args;
 use crate::constants::*;
-use crate::errors::{ColourError, VcsrError};
+use crate::errors::VcsrError;
 use crate::models::{
     Dimensions, Frame, Grid, MediaAttributes, MediaCapture, MediaInfo, MetadataPosition,
     TimestampPosition,
@@ -316,10 +316,11 @@ pub fn load_font<'a>(font_path_str: &str) -> Result<Font<'a>, VcsrError> {
             .into_font()
             .map_err(|e| VcsrError::RustTypeError(e))
     } else {
-        Err(VcsrError::Io(std::io::Error::new(
+        Err(std::io::Error::new(
             std::io::ErrorKind::NotFound,
             format!("file does not found {}", font_path_str),
-        )))
+        )
+        .into())
     }
 }
 
@@ -597,9 +598,9 @@ pub fn compose_contact_sheet(
 
 fn decode_hex(s: &str) -> Result<Rgba<u8>, VcsrError> {
     if s.len() % 2 != 0 {
-        Err(VcsrError::ColourError(ColourError {
-            cause: "cannot decode odd length colours".to_string(),
-        }))
+        Err(VcsrError::ColourError(
+            "cannot decode odd length colours".to_string(),
+        ))
     } else {
         let mut hex_vec: Vec<u8> = (0..s.len())
             .step_by(2)
@@ -617,9 +618,7 @@ fn decode_hex(s: &str) -> Result<Rgba<u8>, VcsrError> {
 fn putalpha(image: &mut RgbaImage, alpha: u8) {
     for pixel in image.pixels_mut() {
         match pixel {
-            image::Rgba { data: rgba } => {
-                (*pixel = image::Rgba([rgba[0], rgba[1], rgba[2], alpha]))
-            }
+            image::Rgba { data: rgba } => *pixel = image::Rgba([rgba[0], rgba[1], rgba[2], alpha]),
         }
     }
 }

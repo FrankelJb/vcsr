@@ -116,16 +116,10 @@ impl MediaInfo {
                     serde_json::from_str(stdout).map_err(|e| VcsrError::StreamError(e))?;
                 Ok(f)
             } else {
-                Err(VcsrError::Io(io::Error::new(
-                    io::ErrorKind::Other,
-                    "ffprobe crashed unexpectedly",
-                )))
+                Err(io::Error::new(io::ErrorKind::Other, "ffprobe crashed unexpectedly").into())
             }
         } else {
-            Err(VcsrError::Io(io::Error::new(
-                io::ErrorKind::Other,
-                "cannot find requested video file",
-            )))
+            Err(io::Error::new(io::ErrorKind::Other, "cannot find requested video file").into())
         }
     }
 
@@ -202,10 +196,10 @@ impl MediaInfo {
                 }
             }
             return Ok(Dimensions {
-                display_height: display_height,
-                display_width: display_width,
-                sample_height: sample_height,
-                sample_width: sample_width,
+                display_height,
+                display_width,
+                sample_height,
+                sample_width,
             });
         }
         Err(VcsrError::VideoStreamError)
@@ -368,17 +362,17 @@ impl MediaInfo {
         }
 
         Ok(MediaAttributes {
-            dimensions: dimensions,
-            display_aspect_ratio: display_aspect_ratio,
-            duration: duration,
-            duration_seconds: duration_seconds,
-            filename: filename,
-            frame_rate: frame_rate,
-            sample_aspect_ratio: sample_aspect_ratio,
-            size: size,
-            size_bytes: size_bytes,
-            video_codec: video_codec,
-            video_codec_long: video_codec_long,
+            dimensions,
+            display_aspect_ratio,
+            duration,
+            duration_seconds,
+            filename,
+            frame_rate,
+            sample_aspect_ratio,
+            size,
+            size_bytes,
+            video_codec,
+            video_codec_long,
         })
     }
 }
@@ -398,10 +392,10 @@ impl MediaCapture {
         frame_type: Option<String>,
     ) -> MediaCapture {
         MediaCapture {
-            path: path,
-            accurate: accurate,
-            skip_delay_seconds: skip_delay_seconds,
-            frame_type: frame_type,
+            path,
+            accurate,
+            skip_delay_seconds,
+            frame_type,
         }
     }
 
@@ -463,7 +457,7 @@ impl MediaCapture {
             error!("ffmpeg error: {}", str::from_utf8(&output.stderr).unwrap());
         }
         Ok(())
-        }
+    }
 
     pub fn compute_avg_colour(image_path: &str) -> Result<f32, VcsrError> {
         if Path::new(image_path).exists() {
@@ -481,10 +475,11 @@ impl MediaCapture {
             let size = image.width() as f32 * image.height() as f32;
             Ok((rgbs.0 / size + rgbs.1 / size + rgbs.2 / size) / 3.0)
         } else {
-            Err(VcsrError::Io(io::Error::new(
+            Err(io::Error::new(
                 io::ErrorKind::NotFound,
                 "Cannot compute average colour as capture file was not created",
-            )))
+            )
+            .into())
         }
     }
 
@@ -524,10 +519,11 @@ impl MediaCapture {
                 return Ok(1.0);
             }
         } else {
-            Err(VcsrError::Io(io::Error::new(
+            Err(io::Error::new(
                 io::ErrorKind::NotFound,
                 "Cannot compute blurriness as capture file was not created",
-            )))
+            )
+            .into())
         }
     }
 

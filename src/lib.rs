@@ -61,10 +61,7 @@ pub fn process_file(
             info!("File does not exist, skipping {}: ", file_name_str);
             return Ok(dir_entry.path().to_path_buf());
         } else {
-            return Err(errors::VcsrError::Io(io::Error::new(
-                io::ErrorKind::NotFound,
-                "file does not exist",
-            )));
+            return Err(std::io::Error::new(io::ErrorKind::NotFound, "file does not exist").into());
         }
     }
 
@@ -98,15 +95,15 @@ pub fn process_file(
     }
 
     if args.interval.is_some() && !args.manual_timestamps.is_empty() {
-        return Err(errors::VcsrError::ArgumentError(errors::ArgumentError {
-            cause: "Cannot use --interval and --manual at the same time.".to_string(),
-        }));
+        return Err(errors::VcsrError::ArgumentError(
+            "Cannot use --interval and --manual at the same time.".to_string(),
+        ));
     }
 
     if args.vcs_width != constants::DEFAULT_CONTACT_SHEET_WIDTH && args.actual_size {
-        return Err(errors::VcsrError::ArgumentError(errors::ArgumentError {
-            cause: "Cannot use --width and --actual-size at the same time.".to_string(),
-        }));
+        return Err(errors::VcsrError::ArgumentError(
+            "Cannot use --width and --actual-size at the same time.".to_string(),
+        ));
     }
 
     if let Some(delay_percent) = &args.delay_percent {
@@ -136,10 +133,9 @@ pub fn process_file(
         && args.manual_timestamps.is_empty()
         && (args.grid.x == 0 || args.grid.y == 0)
     {
-        return Err(errors::VcsrError::ArgumentError(errors::ArgumentError {
-            cause: "Row or column of size zero is only supported with --interval or --manual."
-                .to_string(),
-        }));
+        return Err(errors::VcsrError::ArgumentError(
+            "Row or column of size zero is only supported with --interval or --manual.".to_string(),
+        ));
     }
 
     if let Some(interval) = &args.interval {
@@ -163,9 +159,9 @@ pub fn process_file(
             })
             .collect();
         if args.manual_timestamps.is_empty() {
-            return Err(errors::VcsrError::TimestampError(errors::ArgumentError {
-                cause: String::from("no manual timestamps less than input duration."),
-            }));
+            return Err(errors::VcsrError::TimestampError(String::from(
+                "no manual timestamps less than input duration.",
+            )));
         }
         let mframes_size = Some(args.manual_timestamps.len() as u32);
         args.num_samples = mframes_size;
