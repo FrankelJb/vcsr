@@ -461,12 +461,12 @@ impl MediaCapture {
 
     pub fn compute_avg_colour(image_path: &str) -> Result<f32, VcsrError> {
         if Path::new(image_path).exists() {
-            let image = image::open(image_path).unwrap().to_rgba();
+            let image = image::open(image_path).unwrap().to_rgba8();
             let rgbs: (f32, f32, f32) =
                 image
                     .enumerate_pixels()
                     .fold((0.0, 0.0, 0.0), |acc, (_, _, p)| match p {
-                        image::Rgba { data: rgba } => (
+                        image::Rgba(rgba) => (
                             acc.0 + rgba[0] as f32,
                             acc.1 + rgba[1] as f32,
                             acc.2 + rgba[2] as f32,
@@ -488,11 +488,11 @@ impl MediaCapture {
             let f = std::fs::File::open(image_path).unwrap();
             drop(f);
 
-            let image = image::open(image_path).unwrap().to_luma();
+            let image = image::open(image_path).unwrap().to_luma8();
             let mut input: Vec<Complex<f32>> = image
                 .enumerate_pixels()
                 .map(|(_, _, p)| match p {
-                    image::Luma { data: g } => Complex {
+                    image::Luma(g) => Complex {
                         re: g[0] as f32,
                         im: 0.0,
                     },

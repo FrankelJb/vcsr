@@ -10,8 +10,8 @@ use image::{GenericImage, ImageBuffer, Rgba, RgbaImage};
 use imageproc::{drawing::draw_text_mut, rect::Rect};
 use rand::{distributions::Alphanumeric, thread_rng, Rng};
 use rayon::prelude::*;
-use rusttype::{point, Font, FontCollection, Point, PositionedGlyph, Scale};
-use std::{env, fs::File, io::prelude::*, path::Path};
+use rusttype::{point, Font, Point, PositionedGlyph, Scale};
+use std::{env, fs, path::Path};
 use textwrap::wrap;
 
 pub fn grid_desired_size(
@@ -308,13 +308,8 @@ pub fn compute_timestamp_position(
 pub fn load_font<'a>(font_path_str: &str) -> Result<Font<'a>, VcsrError> {
     let font_path = Path::new(font_path_str);
     if font_path.exists() {
-        let mut file = File::open(font_path).unwrap();
-        let mut data = Vec::new();
-        let _ = file.read_to_end(&mut data);
-        FontCollection::from_bytes(data)
-            .unwrap()
-            .into_font()
-            .map_err(|e| VcsrError::RustTypeError(e))
+        let data = fs::read(font_path_str).expect("Unable to read file");
+        Font::try_from_vec(data).ok_or(VcsrError::RustTypeError)
     } else {
         Err(std::io::Error::new(
             std::io::ErrorKind::NotFound,
@@ -396,20 +391,14 @@ pub fn compose_contact_sheet(
         Some(font_path_str) => load_font(&font_path_str)?,
         None => {
             let data = include_bytes!("../resources/Roboto-Bold.ttf").to_vec();
-            FontCollection::from_bytes(data)
-                .unwrap()
-                .into_font()
-                .map_err(|e| VcsrError::RustTypeError(e))?
+            Font::try_from_vec(data).ok_or(VcsrError::RustTypeError)?
         }
     };
     let timestamp_font = match &args.timestamp_font {
         Some(font_path_str) => load_font(&font_path_str)?,
         None => {
             let data = include_bytes!("../resources/Roboto-Regular.ttf").to_vec();
-            FontCollection::from_bytes(data)
-                .unwrap()
-                .into_font()
-                .map_err(|e| VcsrError::RustTypeError(e))?
+            Font::try_from_vec(data).ok_or(VcsrError::RustTypeError)?
         }
     };
     let timestamp_font_scale = Scale::uniform(args.timestamp_font_size);
@@ -480,7 +469,7 @@ pub fn compose_contact_sheet(
     let mut blurred = image::imageops::blur(&mut rect, 3.0);
     frames.sort_by(|a, b| a.timestamp.partial_cmp(&b.timestamp).unwrap());
     for (i, frame) in frames.iter().enumerate() {
-        let mut f = image::open(&Path::new(&frame.filename)).unwrap().to_rgba();
+        let mut f = image::open(&Path::new(&frame.filename)).unwrap().to_rgba8();
 
         putalpha(&mut f, args.capture_alpha);
 
@@ -618,7 +607,7 @@ fn decode_hex(s: &str) -> Result<Rgba<u8>, VcsrError> {
 fn putalpha(image: &mut RgbaImage, alpha: u8) {
     for pixel in image.pixels_mut() {
         match pixel {
-            image::Rgba { data: rgba } => *pixel = image::Rgba([rgba[0], rgba[1], rgba[2], alpha]),
+            image::Rgba(rgba) => *pixel = image::Rgba([rgba[0], rgba[1], rgba[2], alpha]),
         }
     }
 }

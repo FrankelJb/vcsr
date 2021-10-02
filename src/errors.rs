@@ -1,4 +1,5 @@
-use rusttype::Error as FontError;
+// use rusttype::Error as FontError;
+use image::ImageError;
 use serde_json::error as serde_json_error;
 use thiserror::Error;
 
@@ -11,6 +12,8 @@ pub enum VcsrError {
     #[error("Grid must be of the form mxn, where m is the number of columns and n is the number of rows.")]
     GridShape,
     #[error(transparent)]
+    ImageError(#[from] ImageError),
+    #[error(transparent)]
     IoError(#[from] std::io::Error),
     #[error(transparent)]
     IntError(#[from] std::num::ParseIntError),
@@ -21,7 +24,7 @@ pub enum VcsrError {
     #[error("Cannot unwrap none")]
     NoneError,
     #[error("Rust Type Font Error")]
-    RustTypeError(#[from] FontError),
+    RustTypeError,
     #[error("Stream Error")]
     StreamError(#[from] serde_json_error::Error),
     #[error("Invalid timestamps: `{0}`")]
