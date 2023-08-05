@@ -8,6 +8,7 @@ use crate::models::{
 
 use image::{GenericImage, ImageBuffer, Rgba, RgbaImage};
 use imageproc::{drawing::draw_text_mut, rect::Rect};
+use indicatif::ProgressBar;
 use rand::{distributions::Alphanumeric, thread_rng, Rng};
 use rayon::prelude::*;
 use rusttype::{point, Font, Point, PositionedGlyph, Scale};
@@ -17,8 +18,8 @@ use textwrap::wrap;
 pub fn grid_desired_size(
     grid: &Grid,
     dimensions: &Dimensions,
-    width: Option<u32>,
-    horizontal_margin: Option<u32>,
+    width: Option<u64>,
+    horizontal_margin: Option<u64>,
 ) -> Grid {
     let width = match width {
         Some(width) => width,
@@ -68,6 +69,7 @@ pub fn select_sharpest_images(
     media_attributes: &MediaAttributes,
     media_capture: &MediaCapture,
     args: &Args,
+    bar: &ProgressBar,
 ) -> Result<(Vec<Frame>, Vec<Frame>), VcsrError> {
     let desired_size = grid_desired_size(
         &args.grid,
@@ -83,16 +85,21 @@ pub fn select_sharpest_images(
     };
 
     let do_capture = |ts_tuple: (f32, String),
-                      width: u32,
-                      height: u32,
+                      width: u64,
+                      height: u64,
                       suffix: &str,
                       args: &Args|
      -> Result<Frame, VcsrError> {
-        let rand_string: String = thread_rng().sample_iter(&Alphanumeric).take(7).collect();
+        let rand_string: String = thread_rng()
+            .sample_iter(&Alphanumeric)
+            .take(7)
+            .map(char::from)
+            .collect();
         let mut dir = env::temp_dir();
         let filename = format!("tmp{}{}", rand_string, suffix);
         dir.push(&filename);
         let full_path = dir.to_string_lossy().into_owned();
+        debug!("select_sharpest_images - media_capture.makecapture(ts_tuple.1 {}, width {width}, height {height}, full_path {full_path}))", ts_tuple.1);
         media_capture.make_capture(&ts_tuple.1, width, height, Some(&full_path))?;
         let mut blurriness = 1.0;
         let mut avg_colour = 0.0;
@@ -102,31 +109,33 @@ pub fn select_sharpest_images(
         }
         Ok(Frame {
             filename: full_path,
-            blurriness: blurriness,
+            blurriness,
             timestamp: ts_tuple.0,
-            avg_colour: avg_colour,
+            avg_colour,
         })
     };
 
     let blurs: Result<Vec<Frame>, VcsrError> = timestamps
         .into_par_iter()
         .map(|ts| {
-            do_capture(
+            let result = do_capture(
                 (MediaInfo::pretty_to_seconds(&ts)?, ts),
                 desired_size.x,
                 desired_size.y,
                 if args.fast { ".jpg" } else { ".png" },
                 args,
-            )
+            );
+            bar.inc(1);
+            result
         })
         .collect();
     let mut time_sorted = blurs?;
-    &time_sorted.sort_by(|a, b| a.timestamp.partial_cmp(&b.timestamp).unwrap());
+    time_sorted.sort_by(|a, b| a.timestamp.partial_cmp(&b.timestamp).unwrap());
 
     let num_groups = args.num_groups.unwrap();
     let mut selected_items: Vec<Frame> = vec![];
     if num_groups > 1 {
-        let group_size = 1.max(time_sorted.len() as u32 / num_groups);
+        let group_size = 1.max(time_sorted.len() as u64 / num_groups);
         for chunk in time_sorted.chunks_mut(group_size as usize) {
             chunk.sort_by(|a, b| a.timestamp.partial_cmp(&b.timestamp).unwrap());
             if let Some(c) = chunk.last() {
@@ -141,7 +150,7 @@ pub fn select_sharpest_images(
     Ok((selected_items, time_sorted))
 }
 
-pub fn select_colour_variety(frames: &mut Vec<Frame>, num_selected: u32) -> Vec<Frame> {
+pub fn select_colour_variety(frames: &mut Vec<Frame>, num_selected: u64) -> Vec<Frame> {
     frames.sort_by(|a, b| a.avg_colour.partial_cmp(&b.avg_colour).unwrap());
     let min_colour = frames.first().unwrap().avg_colour;
     let max_colour = frames.last().unwrap().avg_colour;
@@ -172,7 +181,7 @@ pub fn select_colour_variety(frames: &mut Vec<Frame>, num_selected: u32) -> Vec<
         }
     }
 
-    let missing_item_count = num_selected - selected_items.len() as u32;
+    let missing_item_count = num_selected - selected_items.len() as u64;
     if missing_item_count > 0 {
         unselected_items.sort_by(|a, b| a.blurriness.partial_cmp(&b.blurriness).unwrap());
         selected_items.extend_from_slice(&unselected_items[0..missing_item_count as usize]);
@@ -185,8 +194,8 @@ pub fn max_line_length(
     media_info_filename: &str,
     metadata_font: &Font,
     metadata_font_size: f32,
-    header_margin: u32,
-    width: u32,
+    header_margin: u64,
+    width: u64,
     text: Option<&str>,
 ) -> usize {
     let text = match text {
@@ -211,7 +220,7 @@ pub fn max_line_length(
                 .map(|g| g.position().x as f32 + g.unpositioned().h_metrics().advance_width)
                 .next()
                 .unwrap_or(0.0)
-                .ceil() as u32;
+                .ceil() as u64;
 
             max_length = i;
             if text_width > max_width {
@@ -227,8 +236,8 @@ pub fn prepare_metadata_text_lines(
     dimensions: &Dimensions,
     header_font: &Font,
     header_font_size: f32,
-    header_margin: u32,
-    width: u32,
+    header_margin: u64,
+    width: u64,
 ) -> Vec<String> {
     // TODO: template maybe
     let mut header_lines = vec![];
@@ -268,13 +277,13 @@ pub fn prepare_metadata_text_lines(
 
 pub fn compute_timestamp_position(
     args: &Args,
-    w: u32,
-    h: u32,
-    text_size: (u32, u32),
+    w: u64,
+    h: u64,
+    text_size: (u64, u64),
     desired_size: &Grid,
-    rectangle_hpadding: u32,
-    rectangle_vpadding: u32,
-) -> (Point<u32>, Point<u32>) {
+    rectangle_hpadding: u64,
+    rectangle_vpadding: u64,
+) -> (Point<u64>, Point<u64>) {
     let x_offset = match args.timestamp_position {
         TimestampPosition::West | TimestampPosition::NW | TimestampPosition::SW => {
             args.timestamp_horizontal_margin
@@ -322,12 +331,12 @@ pub fn load_font<'a>(font_path_str: &str) -> Result<Font<'a>, VcsrError> {
 pub fn draw_metadata<'a>(
     img: &mut ImageBuffer<Rgba<u8>, Vec<u8>>,
     args: &Args,
-    header_line_height: u32,
+    header_line_height: u64,
     header_lines: &Vec<String>,
     header_font_colour: Rgba<u8>,
     header_font_size: f32,
     header_font: &'a Font<'a>,
-) -> Result<u32, VcsrError> {
+) -> Result<u64, VcsrError> {
     let mut h = args.grid_vertical_spacing;
     let scale = Scale::uniform(header_font_size);
     for line in header_lines {
@@ -336,8 +345,8 @@ pub fn draw_metadata<'a>(
 
         let text_size = get_text_size(&header_font, scale, line);
         let mut shadow = RgbaImage::from_pixel(
-            text_size.0 + 2,
-            text_size.1 + 2,
+            text_size.0 as u32 + 2,
+            text_size.1 as u32 + 2,
             decode_hex(&args.metadata_background_colour)?,
         );
         draw_text_mut(
@@ -352,12 +361,17 @@ pub fn draw_metadata<'a>(
 
         let blur = image::imageops::blur(&shadow, 1.0);
 
-        image::imageops::replace(img, &blur, args.metadata_horizontal_margin + 2, h + 2);
+        image::imageops::replace(
+            img,
+            &blur,
+            args.metadata_horizontal_margin as i64 + 2,
+            h as i64 + 2,
+        );
         draw_text_mut(
             img,
             header_font_colour,
-            args.metadata_horizontal_margin,
-            h,
+            args.metadata_horizontal_margin as i32,
+            h as i32,
             scale,
             &header_font,
             &line,
@@ -414,23 +428,23 @@ pub fn compose_contact_sheet(
     );
 
     let line_spacing_coefficient = 1.2;
-    let header_line_height = (args.metadata_font_size * line_spacing_coefficient) as u32;
+    let header_line_height = (args.metadata_font_size * line_spacing_coefficient) as u64;
     let mut header_height =
-        2 * args.metadata_margin + header_lines.len() as u32 * header_line_height;
+        2 * args.metadata_margin + header_lines.len() as u64 * header_line_height;
 
     if let MetadataPosition::Hidden = args.metadata_position {
         header_height = 0;
     }
 
-    let final_image_width = width;
-    let final_image_height = height + header_height;
+    let final_image_width = width as u32;
+    let final_image_height = height as u32 + header_height as u32;
 
     let hex_background = decode_hex(&args.background_colour)?;
     let mut image = RgbaImage::from_pixel(final_image_width, final_image_height, hex_background);
 
     let mut metadata_image = RgbaImage::from_pixel(
         final_image_width,
-        header_height,
+        header_height as u32,
         decode_hex(&args.metadata_background_colour)?,
     );
 
@@ -453,17 +467,17 @@ pub fn compose_contact_sheet(
     let mut x = args.grid_horizontal_spacing;
     y += args.grid_vertical_spacing;
 
-    let shadow_width = 10;
+    let shadow_width: u32 = 10;
     let mut rect = RgbaImage::from_pixel(
-        desired_size.x + shadow_width,
-        desired_size.y + shadow_width,
+        desired_size.x as u32 + shadow_width,
+        desired_size.y as u32 + shadow_width,
         hex_background,
     );
     let black_pixel = Rgba([0, 0, 0, args.capture_alpha]);
     imageproc::drawing::draw_filled_rect_mut(
         &mut rect,
         Rect::at(shadow_width as i32 / 2, shadow_width as i32 / 2)
-            .of_size(desired_size.x, desired_size.y),
+            .of_size(desired_size.x as u32, desired_size.y as u32),
         black_pixel,
     );
     let mut blurred = image::imageops::blur(&mut rect, 3.0);
@@ -474,9 +488,9 @@ pub fn compose_contact_sheet(
         putalpha(&mut f, args.capture_alpha);
 
         if !args.no_shadow {
-            image::imageops::overlay(&mut image, &mut blurred, x, y);
+            image::imageops::overlay(&mut image, &mut blurred, x as i64, y as i64);
         }
-        image::imageops::overlay(&mut image, &mut f, x, y);
+        image::imageops::overlay(&mut image, &mut f, x as i64, y as i64);
 
         if args.show_timestamp {
             let timestamp_time = MediaInfo::pretty_duration(frame.timestamp, true, false);
@@ -509,7 +523,8 @@ pub fn compose_contact_sheet(
                 let timestamp_border_colour = decode_hex(&args.timestamp_border_colour)?;
                 draw_filled_rounded_rect_mut(
                     &mut image,
-                    Rect::at(upper_left.x as i32, upper_left.y as i32).of_size(size.x, size.y),
+                    Rect::at(upper_left.x as i32, upper_left.y as i32)
+                        .of_size(size.x as u32, size.y as u32),
                     timestamp_border_colour,
                     args.timestamp_border_radius,
                 );
@@ -536,8 +551,8 @@ pub fn compose_contact_sheet(
                     draw_text_mut(
                         &mut image,
                         timestamp_border_colour,
-                        (upper_left.x as i32 + rectangle_hpadding as i32 + offset.0) as u32,
-                        (upper_left.y as i32 + rectangle_vpadding as i32 + offset.1) as u32,
+                        upper_left.x as i32 + rectangle_hpadding as i32 + offset.0,
+                        upper_left.y as i32 + rectangle_vpadding as i32 + offset.1,
                         timestamp_font_scale,
                         &timestamp_font,
                         &timestamp_text,
@@ -548,8 +563,8 @@ pub fn compose_contact_sheet(
             draw_text_mut(
                 &mut image,
                 timestamp_font_colour,
-                upper_left.x + rectangle_hpadding,
-                upper_left.y + rectangle_vpadding,
+                (upper_left.x + rectangle_hpadding) as i32,
+                (upper_left.y + rectangle_vpadding) as i32,
                 timestamp_font_scale,
                 &timestamp_font,
                 &timestamp_text,
@@ -560,12 +575,12 @@ pub fn compose_contact_sheet(
         x += desired_size.x + args.grid_horizontal_spacing;
 
         // update y position
-        if (i as u32 + 1) % args.grid.x == 0 {
+        if (i + 1) as u64 % args.grid.x == 0 {
             y += desired_size.y + args.grid_vertical_spacing;
         }
 
         // update x position
-        if (i as u32 + 1) % args.grid.x == 0 {
+        if (i + 1) as u64 % args.grid.x == 0 {
             x = args.grid_horizontal_spacing;
         }
     }
@@ -576,7 +591,7 @@ pub fn compose_contact_sheet(
         }
         MetadataPosition::Bottom => {
             y += args.grid_vertical_spacing;
-            image::imageops::replace(&mut image, &mut metadata_image, 0, y);
+            image::imageops::replace(&mut image, &mut metadata_image, 0, y as i64);
         }
         MetadataPosition::Hidden => {
             debug!("Metadata hidden");
@@ -612,12 +627,12 @@ fn putalpha(image: &mut RgbaImage, alpha: u8) {
     }
 }
 
-fn get_text_size(font: &Font, scale: Scale, text: &str) -> (u32, u32) {
+fn get_text_size(font: &Font, scale: Scale, text: &str) -> (u64, u64) {
     let v_metrics = font.v_metrics(scale);
 
     let glyphs: Vec<_> = font.layout(text, scale, Point { x: 0.0, y: 0.0 }).collect();
 
-    let glyphs_height = (v_metrics.ascent - v_metrics.descent).ceil() as u32;
+    let glyphs_height = (v_metrics.ascent - v_metrics.descent).ceil() as u64;
     let glyphs_width = {
         let min_x = glyphs
             .first()
@@ -639,7 +654,7 @@ fn get_text_size(font: &Font, scale: Scale, text: &str) -> (u32, u32) {
                 }
             })
             .unwrap();
-        (max_x - min_x) as u32
+        (max_x - min_x) as u64
     };
     (glyphs_width, glyphs_height)
 }

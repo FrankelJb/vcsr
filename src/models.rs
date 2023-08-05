@@ -1,7 +1,7 @@
 use crate::constants::*;
 use crate::errors::VcsrError;
-use clap::arg_enum;
 use image;
+use rustfft::{num_complex::Complex, FftDirection, FftPlanner};
 use serde::Deserialize;
 use std::{
     error::Error,
@@ -11,14 +11,11 @@ use std::{
     str,
     str::FromStr,
 };
-use structopt::StructOpt;
-
-use rustfft::{num_complex::Complex, num_traits::Zero, FFTplanner};
 
 #[derive(Clone, Debug, Default)]
 pub struct Grid {
-    pub x: u32,
-    pub y: u32,
+    pub x: u64,
+    pub y: u64,
 }
 
 impl Eq for Grid {}
@@ -39,7 +36,7 @@ impl FromStr for Grid {
     type Err = VcsrError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let mxn_result: Result<Vec<u32>, _> = s.split("x").map(|m| m.parse::<u32>()).collect();
+        let mxn_result: Result<Vec<u64>, _> = s.split("x").map(|m| m.parse::<u64>()).collect();
         let mxn = mxn_result?;
         if mxn.len() > 2 {
             Err(VcsrError::GridShape)
@@ -83,10 +80,10 @@ pub struct MediaAttributes {
 
 #[derive(Clone, Debug, Default)]
 pub struct Dimensions {
-    pub display_height: Option<u32>,
-    pub display_width: Option<u32>,
-    pub sample_height: Option<u32>,
-    pub sample_width: Option<u32>,
+    pub display_height: Option<u64>,
+    pub display_width: Option<u64>,
+    pub sample_height: Option<u64>,
+    pub sample_width: Option<u64>,
 }
 
 impl MediaInfo {
@@ -110,7 +107,6 @@ impl MediaInfo {
                 .arg("-show_streams")
                 .arg(path)
                 .output()?;
-
             if let Ok(stdout) = str::from_utf8(&output.stdout) {
                 let f: Ffprobe =
                     serde_json::from_str(stdout).map_err(|e| VcsrError::StreamError(e))?;
@@ -146,10 +142,10 @@ impl MediaInfo {
     pub fn compute_display_resolution(ffprobe: &Ffprobe) -> Result<Dimensions, VcsrError> {
         let video_stream = Self::find_video_stream(ffprobe).unwrap().clone();
         if let Stream::VideoStream(video_stream) = video_stream {
-            let mut display_height: Option<u32>;
-            let mut display_width: Option<u32>;
-            let mut sample_height: Option<u32>;
-            let mut sample_width: Option<u32>;
+            let mut display_height: Option<u64>;
+            let mut display_width: Option<u64>;
+            let mut sample_height: Option<u64>;
+            let mut sample_width: Option<u64>;
             sample_width = video_stream.width;
             sample_height = video_stream.height;
             if let Some(rotation) = video_stream.tags.rotate {
@@ -171,13 +167,13 @@ impl MediaInfo {
                     .next()
                     .unwrap()
                     .to_string()
-                    .parse::<u32>()
+                    .parse::<u64>()
                     .unwrap();
                 let sh = sample_split
                     .next()
                     .unwrap()
                     .to_string()
-                    .parse::<u32>()
+                    .parse::<u64>()
                     .unwrap();
 
                 let new_sample_width = sample_width.unwrap() * sw / sh;
@@ -316,16 +312,20 @@ impl MediaInfo {
         }
     }
 
-    pub fn desired_size(dimensions: &Dimensions, width: Option<u32>) -> Grid {
+    pub fn desired_size(dimensions: &Dimensions, width: Option<u64>) -> Grid {
         let new_width = match width {
             Some(w) => w,
             None => DEFAULT_CONTACT_SHEET_WIDTH,
         };
-        let ratio = new_width as f64 / f64::from(dimensions.display_width.unwrap());
-        let desired_height = (dimensions.display_height.unwrap() as f64 * ratio).floor();
+        let ratio = new_width as f64 / dimensions.display_width.unwrap_or(1) as f64;
+        debug!("desired_size: {new_width}, {:?}", dimensions.display_width);
+        let desired_height = dimensions.display_height.unwrap() as f64 * ratio;
+        debug!(
+            "desired_size: ratio {ratio}, new_width {new_width}, desired_height {desired_height}"
+        );
         Grid {
             x: new_width,
-            y: desired_height as u32,
+            y: desired_height as u64,
         }
     }
 
@@ -404,8 +404,8 @@ impl MediaCapture {
     pub fn make_capture(
         &self,
         time: &str,
-        width: u32,
-        height: u32,
+        width: u64,
+        height: u64,
         out_path: Option<&str>,
     ) -> Result<(), VcsrError> {
         let skip_delay = MediaInfo::pretty_duration(self.skip_delay_seconds, false, true);
@@ -444,9 +444,12 @@ impl MediaCapture {
         };
 
         let width_x_height = format!("{}x{}", width, height);
+        debug!("creating image with width {width} and height {height}");
         args.append(&mut vec!["-vframes", "1", "-s", &width_x_height]);
         args.append(&mut select_args);
         args.append(&mut vec!["-y", out_path]);
+
+        debug!("{}", args.join(" "));
 
         let output = Command::new("ffmpeg")
             .stdin(Stdio::null())
@@ -499,12 +502,11 @@ impl MediaCapture {
                 })
                 .collect();
 
-            let mut output: Vec<Complex<f32>> = vec![Zero::zero(); input.len()];
-            let mut planner = FFTplanner::new(false);
-            let fft = planner.plan_fft(input.len());
-            fft.process(&mut input, &mut output);
+            let mut planner = FftPlanner::new();
+            let fft = planner.plan_fft(input.len(), FftDirection::Forward);
+            fft.process(&mut input);
 
-            let mut collected: Vec<f32> = output
+            let mut collected: Vec<f32> = input
                 .into_iter()
                 .map(|c| match c {
                     Complex { re, im: _ } => (re).abs(),
@@ -539,7 +541,7 @@ impl MediaCapture {
             if length % 2 == 0 {
                 (matrix_subset[length / 2 - 1] + matrix_subset[length / 2]) / 2.0
             } else {
-                matrix_subset[(length - 1)] / 2.0
+                matrix_subset[length - 1] / 2.0
             }
         } else {
             0.0
@@ -641,7 +643,7 @@ pub struct StreamStruct {
     duration: Option<String>,
     field_order: Option<String>,
     has_b_frames: Option<u32>,
-    height: Option<u32>,
+    height: Option<u64>,
     index: Option<u32>,
     is_avc: Option<String>,
     level: Option<u32>,
@@ -658,7 +660,7 @@ pub struct StreamStruct {
     #[serde(skip)]
     tags: StreamTags,
     time_base: Option<String>,
-    width: Option<u32>,
+    width: Option<u64>,
 }
 
 #[derive(Clone, Default, Debug, Deserialize)]
@@ -701,28 +703,37 @@ pub struct Ffprobe {
     pub format: Format,
 }
 
-arg_enum! {
-    #[derive(Clone, Debug, StructOpt)]
-    pub enum MetadataPosition {
-        Top,
-        Bottom,
-        Hidden
+#[derive(Clone, Debug)]
+pub enum MetadataPosition {
+    Top,
+    Bottom,
+    Hidden,
+}
+
+impl FromStr for MetadataPosition {
+    type Err = VcsrError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let metadata_position = match s {
+            "top" => MetadataPosition::Top,
+            "bottom" => MetadataPosition::Bottom,
+            _ => MetadataPosition::Hidden,
+        };
+        Ok(metadata_position)
     }
 }
 
-arg_enum! {
-    #[derive(Clone, Debug, StructOpt)]
-    pub enum TimestampPosition {
-        North,
-        South,
-        East,
-        West,
-        NE,
-        NW,
-        SE,
-        SW,
-        Center,
-    }
+#[derive(Clone, Debug, clap::ValueEnum)]
+pub enum TimestampPosition {
+    North,
+    South,
+    East,
+    West,
+    NE,
+    NW,
+    SE,
+    SW,
+    Center,
 }
 
 #[cfg(test)]

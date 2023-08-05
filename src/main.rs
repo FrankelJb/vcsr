@@ -4,40 +4,44 @@ extern crate vcsr;
 
 use vcsr::{args, process_file};
 
-use flexi_logger::{opt_format, Cleanup, Criterion, Logger, Naming};
-use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
+use indicatif::MultiProgress;
 use std::{
+    error::Error,
     ffi::OsStr,
     path::Path,
     process::{Command, Stdio},
 };
 use walkdir::WalkDir;
 
-pub fn main() {
+pub fn main() -> Result<(), Box<dyn Error>> {
     let args = args::application_args();
-
-    match &args.verbose {
-        true => {
-            Logger::with_str(String::from("debug,info,warn,error"))
-                .format(opt_format)
-                .start()
-                .unwrap();
-        }
-        false => {
-            Logger::with_str(String::from("info,warn,error"))
-                .log_to_file()
-                .directory(dirs::home_dir().unwrap().join(".vcsr").join("logs"))
-                .rotate(Criterion::Size(20000), Naming::Numbers, Cleanup::Never)
-                .format(opt_format)
-                .start()
-                .unwrap();
-        }
+    let level = match &args.verbose {
+        true => tracing::Level::DEBUG,
+        false => tracing::Level::INFO,
     };
+    tracing_subscriber::fmt().with_max_level(level).init();
+
+    debug!("{:?}", args);
+
+    // match &args.verbose {
+    // true => {
+    //     Logger::try_with_str(String::from("debug,info,warn,error"))?
+    //         .format(opt_format)
+    //         .start()?;
+    // }
+    // false => {
+    //     Logger::try_with_str(String::from("info,warn,error"))?
+    //         .log_to_file(
+    //             FileSpec::default()
+    //                 .directory(dirs::home_dir().unwrap().join(".vcsr").join("logs")),
+    //         )
+    //         .rotate(Criterion::Size(20000), Naming::Numbers, Cleanup::Never)
+    //         .format(opt_format)
+    //         .start()?;
+    // }
+    // };
 
     let multi = MultiProgress::new();
-    let bar_style = ProgressStyle::default_bar()
-        .template("[{elapsed_precise}] {bar:40.cyan/blue} {pos:>7}/{len:7} {msg}")
-        .progress_chars("##-");
 
     match Command::new("ffmpeg")
         .stdin(Stdio::null())
@@ -52,14 +56,16 @@ pub fn main() {
         }
     };
     let mut walker: WalkDir;
-    let pool = rayon::ThreadPoolBuilder::new()
+    rayon::ThreadPoolBuilder::new()
         .num_threads(num_cpus::get() * 2)
         .build()
         .unwrap();
 
     for path in &args.filenames {
+        debug!("processing path: {}", path);
         if !Path::new(path).exists() {
             error!("File does not exist, trying next: {}", path);
+            debug!("File exists, continuing");
             continue;
         }
         if args.recursive {
@@ -75,26 +81,22 @@ pub fn main() {
             .filter(|e| {
                 let extension = e.path().extension().and_then(OsStr::to_str).unwrap();
                 if args.exclude_extensions.contains(&String::from(extension)) {
-                    warn!("Excluded extension {}. Skipping.", extension);
+                    info!("Excluded extension {}. Skipping.", extension);
                     false
                 } else {
                     true
                 }
             })
         {
-            let bar = multi.add(ProgressBar::new(1));
-            bar.set_style(bar_style.clone());
             let mut current_args = args.clone();
             let entry_copy = entry.clone();
-            let _ = pool.spawn(move || match process_file(&entry, &mut current_args) {
+            match process_file(&entry, &mut current_args, &multi) {
                 Ok(file_name) => {
                     let m = format!(
                         "succesfully created {}",
                         file_name.file_name().unwrap().to_string_lossy()
                     );
-
-                    info!("{}", &m);
-                    bar.finish_with_message(&m);
+                    debug!("{}", &m);
                 }
                 Err(err) => {
                     error!(
@@ -103,10 +105,9 @@ pub fn main() {
                         err.to_string()
                     );
                 }
-            });
+            };
         }
     }
 
-    multi.join().unwrap();
     std::process::exit(exitcode::OK);
 }

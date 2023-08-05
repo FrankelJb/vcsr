@@ -21,6 +21,7 @@ pub mod errors;
 pub mod models;
 mod operations;
 
+use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use std::{
     io,
     path::{Path, PathBuf},
@@ -49,12 +50,11 @@ use walkdir::DirEntry;
 pub fn process_file(
     dir_entry: &DirEntry,
     args: &mut args::Args,
+    multi: &MultiProgress,
 ) -> Result<PathBuf, errors::VcsrError> {
     let file_name_str = dir_entry.file_name().to_str().unwrap();
 
-    if args.verbose {
-        info!("Considering {}", file_name_str);
-    }
+    debug!("Starting process for {}", file_name_str);
 
     if !dir_entry.path().exists() {
         if args.ignore_errors {
@@ -114,6 +114,7 @@ pub fn process_file(
     args.num_groups = Some(5);
 
     let media_info = models::MediaInfo::new(dir_entry.path(), false)?;
+
     let media_attributes = media_info
         .media_attributes
         .ok_or_else(|| errors::VcsrError::MediaError)?;
@@ -141,7 +142,7 @@ pub fn process_file(
     if let Some(interval) = &args.interval {
         let total_delay = operations::total_delay_seconds(&media_attributes, &args);
         let selected_duration = media_attributes.duration_seconds - total_delay;
-        let num_samples = Some((selected_duration / interval.as_secs() as f32) as u32);
+        let num_samples = Some((selected_duration / interval.as_secs() as f32) as u64);
         args.num_samples = num_samples;
         args.num_selected = num_samples;
         args.num_groups = num_samples;
@@ -163,14 +164,14 @@ pub fn process_file(
                 "no manual timestamps less than input duration.",
             )));
         }
-        let mframes_size = Some(args.manual_timestamps.len() as u32);
+        let mframes_size = Some(args.manual_timestamps.len() as u64);
         args.num_samples = mframes_size;
         args.num_selected = mframes_size;
         args.num_groups = mframes_size;
     }
 
     if args.interval.is_some() || !args.manual_timestamps.is_empty() {
-        let square_side = (args.num_samples.unwrap() as f32).sqrt().ceil() as u32;
+        let square_side = (args.num_samples.unwrap() as f32).sqrt().ceil() as u64;
 
         if args.grid == constants::DEFAULT_GRID_SIZE || (args.grid.x == 0 && args.grid.y == 0) {
             args.grid = models::Grid {
@@ -228,14 +229,25 @@ pub fn process_file(
 
     if args.actual_size {
         let x = args.grid.x;
-        args.vcs_width = x * media_attributes.dimensions.display_width.unwrap()
+        args.vcs_width = x * media_attributes.dimensions.display_width.unwrap() as u64
             + (x - 1) * args.grid_horizontal_spacing;
     }
 
+    let bar = multi.add(ProgressBar::new(args.num_samples.unwrap_or(10)));
+    let bar_style = ProgressStyle::default_bar()
+        .template("[{elapsed_precise}] {bar:40.cyan/blue} {pos:>7}/{len:7} {msg}")
+        .unwrap()
+        .progress_chars("##-");
+    bar.set_style(bar_style);
+
     let (mut selected_frames, temp_frames) =
-        operations::select_sharpest_images(&media_attributes, &media_capture, &args)?;
+        operations::select_sharpest_images(&media_attributes, &media_capture, &args, &bar)?;
+
+    bar.set_message("finished capturing, composing");
 
     let image = operations::compose_contact_sheet(&media_attributes, &mut selected_frames, &args)?;
+
+    bar.set_message("finished composing, saving");
 
     image.save(&output_path)?;
 
@@ -260,6 +272,14 @@ pub fn process_file(
     for frame in temp_frames {
         std::fs::remove_file(frame.filename)?;
     }
+
+    let m = format!(
+        "succesfully created {}",
+        output_path.file_name().unwrap().to_string_lossy()
+    );
+
+    bar.finish_with_message(m);
+    println!("");
 
     Ok(output_path)
 }
