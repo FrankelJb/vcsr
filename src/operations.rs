@@ -6,6 +6,7 @@ use crate::models::{
     TimestampPosition,
 };
 
+use bwrap;
 use image::{GenericImage, ImageBuffer, Rgba, RgbaImage};
 use imageproc::{drawing::draw_text_mut, rect::Rect};
 use indicatif::ProgressBar;
@@ -13,7 +14,6 @@ use rand::{distributions::Alphanumeric, thread_rng, Rng};
 use rayon::prelude::*;
 use rusttype::{point, Font, Point, PositionedGlyph, Scale};
 use std::{env, fs, path::Path};
-use textwrap::wrap;
 
 pub fn grid_desired_size(
     grid: &Grid,
@@ -191,18 +191,12 @@ pub fn select_colour_variety(frames: &mut Vec<Frame>, num_selected: u64) -> Vec<
 }
 
 pub fn max_line_length(
-    media_info_filename: &str,
     metadata_font: &Font,
     metadata_font_size: f32,
     header_margin: u64,
     width: u64,
-    text: Option<&str>,
+    text: &str,
 ) -> usize {
-    let text = match text {
-        Some(text) => text,
-        None => media_info_filename,
-    };
-
     let max_width = width - 2 * header_margin;
     let scale = Scale::uniform(metadata_font_size);
 
@@ -253,24 +247,19 @@ pub fn prepare_metadata_text_lines(
         sample_height = dimensions.display_height.unwrap()
     );
 
-    let template_lines = template
+    let template_lines: Vec<&str> = template
         .split("\n")
-        .map(|s| if s.len() > 0 { s.trim() } else { s });
+        .map(|s| if s.len() > 0 { s.trim() } else { s })
+        .collect();
+
     for line in template_lines {
-        let mut remaining_chars = line;
-        while remaining_chars.len() > 0 {
-            let max_metadata_line_length = max_line_length(
-                &media_attributes.filename,
-                &header_font,
-                header_font_size,
-                header_margin,
-                width,
-                Some(line),
-            );
-            let wraps = wrap(remaining_chars, max_metadata_line_length);
-            header_lines.push(String::from(wraps[0].clone()));
-            remaining_chars = &remaining_chars[wraps[0].len()..];
-        }
+        let max_metadata_line_length =
+            max_line_length(&header_font, header_font_size, header_margin, width, line);
+        let mut wraps: Vec<String> = bwrap::wrap!(line, max_metadata_line_length)
+            .split("\n")
+            .map(|s| s.to_string())
+            .collect();
+        header_lines.append(&mut wraps);
     }
     header_lines
 }

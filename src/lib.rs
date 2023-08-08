@@ -13,7 +13,6 @@ extern crate rand;
 extern crate rayon;
 extern crate serde;
 extern crate serde_json;
-extern crate textwrap;
 
 pub mod args;
 mod constants;
